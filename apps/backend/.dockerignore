@@ -1,0 +1,22 @@
+# Ignore node modules (it should be installed inside the container)
+node_modules
+
+# Ignore TypeScript build output (will be generated inside the container)
+dist
+
+# Ignore logs
+logs
+*.log
+
+# Ignore environment files (keep secrets safe!)
+.env
+.env.local
+.env.*.local
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore Git files
+.git
+.gitignore

@@ -1,0 +1,269 @@
+  <FieldArray name="questions">
+        {({ push, remove, form }) => (
+          <div className="bg-[#343434] p-4 rounded-lg border border-gray-700">
+            <h3 className="text-lg font-medium text-white mb-4">
+              Add New Question
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Question Text
+                </label>
+                <Field
+                  as="textarea"
+                  id={`questions.${form.values.questions.length - 1}.text`}
+                  name={`questions.${form.values.questions.length - 1}.text`}
+                  className="w-full px-3 py-2 bg-[#1C1C1C] border border-gray-700 rounded-md text-white focus:outline-none focus:border-green-500"
+                  rows={2}
+                  placeholder="Enter your question"
+                />
+                <ErrorMessage
+                  name={`questions.${form.values.questions.length - 1}.text`}
+                  component="div"
+                  className="text-sm text-danger-light"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                {/* Question Type */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Question Type
+                  </label>
+                  <Field
+                    name={`questions.${form.values.questions.length - 1}.type`}
+                  >
+                    {({ field }: { field: { value: string } }) => (
+                      <div className="flex space-x-2">
+                        {["multiple", "single"].map((type) => (
+                          <label
+                            key={type}
+                            className={cn(
+                              "px-4 py-2 rounded-md border transition-all duration-300 cursor-pointer",
+                              field.value === type
+                                ? {
+                                    multiple:
+                                      "bg-blue-500/10 text-blue-500 border-blue-500/20",
+                                    single:
+                                      "bg-purple-500/10 text-purple-500 border-purple-500/20",
+                                  }[type]
+                                : "bg-[#343434] border border-gray-700 text-white"
+                            )}
+                          >
+                            <input
+                              type="radio"
+                              {...field}
+                              value={type}
+                              className="hidden"
+                            />
+                            {type === "multiple"
+                              ? "Multiple Choice"
+                              : "Single Choice"}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </Field>
+                </div>
+
+                {/* Marks */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                    Marks
+                  </label>
+                  <Field
+                    name={`questions.${form.values.questions.length - 1}.marks`}
+                  >
+                    {({ field }: { field: { value: number } }) => (
+                      <div className="flex space-x-2">
+                        {[5, 10, 15].map((mark) => (
+                          <label
+                            key={mark}
+                            className={cn(
+                              "w-20 px-4 py-2 rounded-md border transition-all duration-300 text-center cursor-pointer",
+                              field.value === mark
+                                ? "bg-primary/10 text-primary border-primary/20"
+                                : "bg-[#1C1C1C] border border-gray-700 text-white"
+                            )}
+                          >
+                            <input
+                              type="radio"
+                              {...field}
+                              value={mark}
+                              checked={field.value === mark} // Ensure the correct mark is selected
+                              onChange={() =>
+                                form.setFieldValue(
+                                  `questions.${
+                                    form.values.questions.length - 1
+                                  }.marks`,
+                                  mark
+                                )
+                              } // Set the value to the selected mark
+                              className="hidden"
+                            />
+                            {mark}
+                          </label>
+                        ))}
+                        {/* Custom Input */}
+                        <div className="relative">
+                          <Field
+                            type="number"
+                            className="w-24 px-3 py-2 bg-[#1C1C1C] border border-gray-700 rounded-md text-white focus:outline-none focus:border-primary"
+                            placeholder="..."
+                            name={`questions.${
+                              form.values.questions.length - 1
+                            }.marks`}
+                            min="1"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </Field>
+
+                  <ErrorMessage
+                    name={`questions.${form.values.questions.length - 1}.marks`}
+                    component="div"
+                    className="text-sm text-danger-light"
+                  />
+                </div>
+              </div>
+
+              {/* Question Option  */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Options
+                </label>
+                <div className="space-y-2">
+                  <FieldArray
+                    name={`questions.${
+                      form.values.questions.length - 1
+                    }.options`}
+                  >
+                    {({ push, remove }) => (
+                      <div>
+                        {form.values.questions[
+                          form.values.questions.length - 1
+                        ].options?.map((option: string, index: number) => (
+                          <div key={index} className="mb-2">
+                            <div className="flex gap-2 items-center">
+                              <button
+                                type="button"
+                                className={cn(
+                                  "w-10 h-10 rounded-md flex items-center justify-center border transition-all duration-300",
+                                  form.values.questions[
+                                    form.values.questions.length - 1
+                                  ].correctAnswer.includes(index.toString())
+                                    ? "bg-primary/10 text-primary border-primary/20"
+                                    : "bg-[#1C1C1C] border border-gray-700 text-white"
+                                )}
+                                onClick={() => {
+                                  const correctAnswer = form.values.questions[
+                                    form.values.questions.length - 1
+                                  ].correctAnswer as string[];
+                                  if (
+                                    form.values.questions[
+                                      form.values.questions.length - 1
+                                    ].type === "multiple"
+                                  ) {
+                                    if (
+                                      correctAnswer.includes(index.toString())
+                                    ) {
+                                      form.setFieldValue(
+                                        `questions.${
+                                          form.values.questions.length - 1
+                                        }.correctAnswer`,
+                                        correctAnswer.filter(
+                                          (item) => item !== index.toString()
+                                        )
+                                      );
+                                    } else {
+                                      form.setFieldValue(
+                                        `questions.${
+                                          form.values.questions.length - 1
+                                        }.correctAnswer`,
+                                        [...correctAnswer, index.toString()]
+                                      );
+                                    }
+                                  } else {
+                                    form.setFieldValue(
+                                      `questions.${
+                                        form.values.questions.length - 1
+                                      }.correctAnswer`,
+                                      [index.toString()]
+                                    );
+                                  }
+                                }}
+                              >
+                                {String.fromCharCode(65 + index)}{" "}
+                                {/* A, B, C, ... */}
+                              </button>
+
+                              <Field
+                                type="text"
+                                name={`questions.${
+                                  form.values.questions.length - 1
+                                }.options[${index}]`}
+                                className="flex-1 px-3 py-2 bg-[#1C1C1C] border border-gray-700 rounded-md text-white focus:outline-none focus:border-green-500"
+                                placeholder={`Option ${String.fromCharCode(
+                                  65 + index
+                                )}`} // A, B, C, ...
+                              />
+
+                              {index > 1 && (
+                                <button
+                                  onClick={() => remove(index)}
+                                  className="text-red-500 hover:text-red-400 p-2"
+                                >
+                                  <Trash2 className="w-5 h-5" />
+                                </button>
+                              )}
+                            </div>
+                            <ErrorMessage
+                              name={`questions.${
+                                form.values.questions.length - 1
+                              }.options[${index}]`}
+                              component="div"
+                              className="text-sm text-danger-light"
+                            />
+                          </div>
+                        ))}
+
+                        {form.values.questions[form.values.questions.length - 1]
+                          .options &&
+                          form.values.questions[
+                            form.values.questions.length - 1
+                          ].options.length < 4 && (
+                            <button
+                              type="button"
+                              onClick={() => push("")}
+                              className="mt-2 text-green-500 hover:text-green-400 text-sm flex items-center"
+                            >
+                              <Plus className="w-4 h-4 mr-1" />
+                              Add Option
+                            </button>
+                          )}
+                      </div>
+                    )}
+                  </FieldArray>
+                </div>
+              </div>
+
+              <button
+                onClick={() =>
+                  push({
+                    text: "",
+                    type: "multiple",
+                    options: ["", ""],
+                    correctAnswer: [],
+                    marks: 1,
+                  })
+                }
+                className="w-full flex justify-center items-center px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
+              >
+                <Plus className="w-5 h-5 mr-1" />
+                Add Question
+              </button>
+            </div>
+          </div>
+        )}
+      </FieldArray>
