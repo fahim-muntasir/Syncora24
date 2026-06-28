@@ -1,12 +1,19 @@
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 import { userLoggedOut } from "../auth/authSlice";
 
-const getApiBase = () => {
-  if (process.env.NODE_ENV === "development") {
-    return `${process.env.NEXT_PUBLIC_API_URL}/api/v1`;
-  }
+// const getApiBase = () => {
+//   if (process.env.NODE_ENV === "development") {
+//     return `${process.env.NEXT_PUBLIC_API_URL}/api/v1`;
+//   }
 
-  return `/api/v1`;
+//   return `/api/v1`;
+// };
+
+const getApiBase = () => {
+  return (
+    process.env.NEXT_PUBLIC_API_URL ??
+    "http://localhost:8001"
+  ) + "/api/v1";
 };
 
 export const apiSlice = createApi({

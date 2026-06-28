@@ -31,10 +31,7 @@ export class SocketManager {
     // If socket exists but is disconnected, reuse it
     if (this.socket) return this.socket;
 
-    const url =
-      process.env.NODE_ENV === "production"
-        ? undefined
-        : process.env.NEXT_PUBLIC_API_URL;
+    const url = process.env.NEXT_PUBLIC_API_URL;
 
     this.socket = io(url, {
       reconnection: true,

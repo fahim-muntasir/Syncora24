@@ -9,7 +9,7 @@ export const addMembersController = async (
   next: NextFunction
 ) => {
   // const { roomId } = req.params;
-  const roomId = req.query.roomId as string;
+  const roomId = req.params.roomId as string; 
 
   try {
     const member = {
