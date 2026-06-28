@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "",
   "private": true,
-  "packageManager": "pnpm@10",
+  "packageManager": "pnpm@10.12.4",
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
@@ -13,8 +13,10 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "packageManager": "pnpm@10.14.0",
   "devDependencies": {
     "turbo": "^2.9.18"
+  },
+  "engines": {
+    "node": "22.x"
   }
 }

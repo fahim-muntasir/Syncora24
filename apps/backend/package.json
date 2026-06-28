@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",
+  "packageManager": "pnpm@10.12.4",
   "scripts": {
     "dev": "tsx watch ./index.ts",
     "build": "tsc --build",
