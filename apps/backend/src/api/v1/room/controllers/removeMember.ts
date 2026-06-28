@@ -9,7 +9,8 @@ export const removeMembersController = async (
   res: Response,
   next: NextFunction
 ) => {
-  const { roomId } = req.params;
+  // const { roomId } = req.params;
+  const roomId = req.params.roomId as string;
 
   try {
     if (!roomId || !req.user?.id) {

@@ -1,5 +1,7 @@
-import jwt from "jsonwebtoken";
+import jwt, { SignOptions } from "jsonwebtoken";
 import createHttpError from "http-errors";
+
+const expiresIn = (process.env.ACCESS_TOKEN_EXPIRESIN ?? "1h") as SignOptions["expiresIn"];
 
 // Generate JWT Token
 export const tokenGenerator = async (payload: object): Promise<string> => {
@@ -11,7 +13,7 @@ export const tokenGenerator = async (payload: object): Promise<string> => {
 
     const token = jwt.sign(payload, process.env.ACCESS_TOKEN_SECRET, {
       algorithm: "HS256",
-      expiresIn: process.env.ACCESS_TOKEN_EXPIRESIN || "1h",
+      expiresIn,
     });
 
     return token;

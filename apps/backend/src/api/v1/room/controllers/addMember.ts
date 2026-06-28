@@ -8,7 +8,8 @@ export const addMembersController = async (
   res: Response,
   next: NextFunction
 ) => {
-  const { roomId } = req.params;
+  // const { roomId } = req.params;
+  const roomId = req.query.roomId as string;
 
   try {
     const member = {
