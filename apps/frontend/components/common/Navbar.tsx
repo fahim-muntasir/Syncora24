@@ -47,7 +47,7 @@ export function Navbar() {
                   </div>
                 </div>
                 <div className="flex flex-col leading-none">
-                  <span className="text-white font-semibold text-base tracking-tight">Verbly</span>
+                  <span className="text-white font-semibold text-base tracking-tight">Syncora24</span>
                   <span className="text-[10px] text-gray-500 font-medium tracking-widest uppercase">Practice Rooms</span>
                 </div>
               </Link>
