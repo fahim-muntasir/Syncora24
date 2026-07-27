@@ -1,14 +1,3 @@
-// components/practicezoon/Room/RoomLayout.tsx
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ROOM LAYOUT — UPDATED
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-//
-// Changes:
-//   • Derives currentUserIsHost from store and passes to all children
-//   • Passes speakingUsers + unMutedUsers to SidePanel (for Participants tab)
-//   • Passes raisedHandCount to ControlsBar (for host panel badge)
-//   • No business logic changes — purely wiring role-aware props
-
 import React, { useEffect } from "react";
 import { useSocket } from "@/context/SocketContext";
 import { RoomType } from "@/types/room";
