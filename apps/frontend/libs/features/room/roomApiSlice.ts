@@ -1,12 +1,13 @@
 import { apiSlice } from "../api/apiSlice";
 import { CreateRoomType } from "@/types/roomCreateModal";
+import {RoomResponseType} from "@/types/room";
 
 export const roomApiSlice = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
     getRooms: builder.query<unknown, void>({
       query: () => `/rooms`,
     }),
-    getSingleRoom: builder.query<unknown, string>({
+    getSingleRoom: builder.query<RoomResponseType, string>({
       query: (roomId) => `/rooms/${roomId}`,
     }),
     createRoom: builder.mutation<unknown, CreateRoomType>({
