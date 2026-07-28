@@ -88,7 +88,7 @@ export const refreshTokenValidator = async (
     return decoded as RefreshTokenPayload;
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {
-      throw createHttpError(401, "Token has expired.");
+      throw createHttpError(401, "Refresh token has expired.");
     }
 
     if (error instanceof jwt.JsonWebTokenError) {
@@ -117,7 +117,7 @@ export const tokenValidator = async (
   } catch (error) {
     // Handle token expiration
     if (error instanceof jwt.TokenExpiredError) {
-      throw createHttpError(401, "Token has expired.");
+      throw createHttpError(401, "Access token has expired.");
     }
     // Handle invalid or malformed token
     if (error instanceof jwt.JsonWebTokenError) {

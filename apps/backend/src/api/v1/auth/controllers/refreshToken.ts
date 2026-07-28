@@ -1,13 +1,12 @@
 import { Request, Response, NextFunction } from "express";
 import createHttpError from "http-errors";
 import { successResponse } from "../../../../utils/responseHelper";
-import { isUserType } from "../../../../utils/typeGuards";
 import {
   refreshTokenValidator,
   tokenGenerator,
   refreshTokenGenerator,
 } from "../../../../lib/auth";
-import { existAuthenticateUser } from "../../../../lib/auth";
+import { existAuthenticateUserById } from "../../../../lib/auth";
 
 export const refreshTokenController = async (
   req: Request,
@@ -36,7 +35,7 @@ export const refreshTokenController = async (
     }
 
     // Get the latest user data from database
-    const authenticateUser = await existAuthenticateUser(decoded.id);
+    const authenticateUser = await existAuthenticateUserById(decoded.id);
 
     if (!authenticateUser) {
       throw createHttpError(401, "User no longer exists");

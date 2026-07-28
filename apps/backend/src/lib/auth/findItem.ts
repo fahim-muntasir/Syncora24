@@ -23,3 +23,16 @@ export const existAuthenticateUser = async (email: string) => {
     throw error;
   }
 };
+
+export const existAuthenticateUserById = async (id: string) => {
+  try {
+    const user = await Auth.findById(id);
+    if (user) {
+      return user;
+    }
+
+    return false;
+  } catch (error) {
+    throw error;
+  }
+};

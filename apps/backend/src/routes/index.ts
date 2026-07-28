@@ -29,8 +29,8 @@ router.get("/health", (_req: Request, res: Response) => {
 // aut route SignIn and SignUp
 router.route("/v1/auth/signup").post(signUpController);
 router.route("/v1/auth/signin").post(signInController);
-router.route("/v1/auth/refresh").post(auth, refreshTokenController);
-router.route("/v1/auth/logout").post(auth, logoutController);
+router.route("/v1/auth/refresh").post(refreshTokenController);
+router.route("/v1/auth/logout").post(logoutController);
 
 // routes for rooms
 router
