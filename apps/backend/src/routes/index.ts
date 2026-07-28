@@ -5,7 +5,7 @@ const router = Router();
 import { auth } from "../middleware/auth";
 
 // controller import
-import { signUpController, signInController } from "../api/v1/auth";
+import { signUpController, signInController, refreshTokenController, logoutController } from "../api/v1/auth";
 
 // rooms controller import
 import {
@@ -29,6 +29,8 @@ router.get("/health", (_req: Request, res: Response) => {
 // aut route SignIn and SignUp
 router.route("/v1/auth/signup").post(signUpController);
 router.route("/v1/auth/signin").post(signInController);
+router.route("/v1/auth/refresh").post(auth, refreshTokenController);
+router.route("/v1/auth/logout").post(auth, logoutController);
 
 // routes for rooms
 router

@@ -12,7 +12,7 @@ export const useCheckAuth = () => {
         const authData = JSON.parse(localStorage.getItem("auth") || "{}");
 
         if (authData.token && authData.user) {
-          dispatch(userLoggedIn(authData.user));
+          dispatch(userLoggedIn({ user: authData.user, token: authData.token }));
         }
       } catch (error) {
         console.error("Error parsing authentication data:", error);
