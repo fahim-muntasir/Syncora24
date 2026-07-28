@@ -5,13 +5,14 @@
   "license": "MIT",
   "packageManager": "pnpm@10.12.4",
   "scripts": {
-    "dev": "tsx watch ./index.ts",
+    "dev": "tsx watch --env-file=.env ./index.ts",
     "build": "tsc --build",
     "start": "node ./dist/index.js",
     "start:dev": "nodemon ./index.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
@@ -26,6 +27,7 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",
+    "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/http-errors": "^2.0.5",

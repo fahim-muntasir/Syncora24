@@ -2,6 +2,8 @@
 import React from "react";
 import { BookOpenCheck, LogIn, Plus, LogOut } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/libs/hooks";
+import { userLoggedOut } from "@/libs/features/auth/authSlice";
+import { useLogoutMutation } from "@/libs/features/auth/authApiSlice";
 import { openCreateRoomModal } from "@/libs/features/modal/modalSlice";
 import Link from "next/link";
 import CreateRoomModal from "../CreateRoomModal";
@@ -10,17 +12,23 @@ export function Navbar() {
   const dispatch = useAppDispatch();
   const roomIsOpen = useAppSelector((state) => state.modal.createRoomModal.isOpen);
   const user = useAppSelector((state) => state.auth.user);
-  console.log("Navbar user state:", user);
+  const [logout] = useLogoutMutation();
 
   const modalHandler = () => {
     dispatch(openCreateRoomModal());
   };
 
-  const logoutHandler = () => {
-    localStorage.removeItem("auth");
-    setTimeout(() => {
-      window.location.reload();
-    }, 1000);
+  const logoutHandler = async () => {
+    try {
+      await logout().unwrap();
+    } catch (error) {
+      console.error("Logout request failed:", error);
+    } finally {
+      localStorage.removeItem("auth");
+      dispatch(userLoggedOut());
+
+      window.location.href = "/auth/signin";
+    }
   };
 
   return (

@@ -1,5 +1,6 @@
 import { apiSlice } from "../api/apiSlice";
 import { isAuthResponse } from "@/utils/typeGuards";
+import { userLoggedIn } from "./authSlice";
 
 export const authApiSlice = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
@@ -20,17 +21,26 @@ export const authApiSlice = apiSlice.injectEndpoints({
         method: "POST",
         body: { email, password },
       }),
-      onQueryStarted: async (args, { queryFulfilled }) => {
+      onQueryStarted: async (args, { dispatch, queryFulfilled }) => {
         try {
           const { data } = await queryFulfilled;
 
           if (isAuthResponse(data)) {
             localStorage.setItem(
               "auth",
-              JSON.stringify({ token: data.data.token, user: data.data.user })
+              JSON.stringify({ token: data.data.token, user: data.data.user }),
             );
 
-            setTimeout(() => { window.location.href = "/"; }, 2000);
+            dispatch(
+              userLoggedIn({
+                token: data.data.token,
+                user: data.data.user,
+              }),
+            );
+
+            setTimeout(() => {
+              window.location.href = "/";
+            }, 2000);
           } else {
             console.error("Invalid response structure:", data);
           }
@@ -39,7 +49,14 @@ export const authApiSlice = apiSlice.injectEndpoints({
         }
       },
     }),
+
+    logout: builder.mutation<unknown, void>({
+      query: () => ({
+        url: "/auth/logout",
+        method: "POST",
+      }),
+    }),
   }),
 });
 
-export const { useSignUpMutation, useSignInMutation } = authApiSlice;
+export const { useSignUpMutation, useSignInMutation, useLogoutMutation } = authApiSlice;

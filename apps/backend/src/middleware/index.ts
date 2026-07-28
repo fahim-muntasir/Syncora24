@@ -1,8 +1,10 @@
 import express, { Application } from "express";
 import cors from "cors";
 import morgan from "morgan";
+import cookieParser from "cookie-parser";
 
 const middleware = (app: Application) => {
+  app.use(cookieParser());
   app.use(morgan("dev"));
   app.use( cors({
     origin: [
