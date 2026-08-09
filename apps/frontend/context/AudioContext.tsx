@@ -15,6 +15,7 @@ import {
   setSpeakingUser,
   removeSpeakingUser,
 } from "@/libs/features/room/roomSlice";
+import { setUnMutedUser, removeUnMutedUser, setForceMutedUser, removeForceMutedUser } from "@/libs/features/room/roomSlice";
 import toast from "react-hot-toast";
 import { socketManager } from "@/libs/socket/index";
 
@@ -27,6 +28,8 @@ type AudioContextType = {
   startAudio: (userId: string, roomId: string) => Promise<MediaStream | null>;
   stopAudio: (userId: string) => void;
   toggleMute: (roomId: string, userId: string) => void;
+  forceMuteUser: (roomId: string, targetUserId: string) => void;
+  forceUnmuteUser: (roomId: string, targetUserId: string) => void;
 };
 
 const AudioCtx = createContext<AudioContextType | undefined>(undefined);
@@ -49,6 +52,16 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
   const dispatch = useAppDispatch();
   const isMuted = useAppSelector((s) => s.room.isMuted);
   const [isAudioEnabled, setIsAudioEnabled] = useState(false);
+
+  const currentUserId = useAppSelector((state) => state.auth.user?.id ?? "");
+
+  const forceMutedUsers = useAppSelector(
+    (state) => state.room.forceMutedUsers
+  );
+
+  const isForceMuted = currentUserId
+    ? forceMutedUsers.includes(currentUserId)
+    : false;
 
   // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -231,6 +244,14 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [dispatch, stopDetectionLoop]);
 
   const toggleMute = useCallback(async (roomId: string, userId: string) => {
+    if (isForceMuted) {
+      toast.error(
+        "You have been muted by a moderator."
+      );
+
+      return;
+    }
+
     if (isMuted) {
       // ── Unmuting ────────────────────────────────────────────────────────────
       if (!localStreamRef.current) {
@@ -241,6 +262,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
           dispatch(setMuted(false));
           socketManager.emit("user-mute-status", { roomId, userId, isUnMuted: true });
           toast.success("Microphone on");
+          dispatch(setUnMutedUser(userId));
         } catch {
           dispatch(setMuted(true));
         }
@@ -254,6 +276,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
           // Resume AudioContext if needed (browser may have suspended it)
           await getAudioContext();
           toast.success("Microphone on");
+          dispatch(setUnMutedUser(userId));
         }
       }
     } else {
@@ -266,18 +289,19 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
         dispatch(removeSpeakingUser(userId));
         socketManager.emit("user-speaking", { roomId, userId, speaking: false });
         toast.success("Microphone muted");
+        dispatch(removeUnMutedUser(userId));
       }
     }
-  }, [isMuted, dispatch, requestMicrophoneAccess, getAudioContext]);
+  }, [isForceMuted, isMuted, dispatch, requestMicrophoneAccess, getAudioContext]);
 
   // ── Listen for other users' mute status ────────────────────────────────────
   useEffect(() => {
     const unsub = socketManager.on("user-mute-status", (payload: unknown) => {
-      const { userId, isMuted: muted } = payload as {
+      const { userId, isUnMuted: muted } = payload as {
         userId: string;
-        isMuted: boolean;
+        isUnMuted: boolean;
       };
-      console.log(`[Audio] ${userId} is now ${muted ? "muted" : "unmuted"}`);
+      console.log(`[Audio] ${userId} is now ${muted ? "unmuted" : "muted"}`);
       // You can dispatch to Redux here if you track other users' mute state
     });
 
@@ -290,6 +314,118 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, [stopDetectionLoop]);
 
+  useEffect(() => {
+    const unsubscribe = socketManager.on(
+      "member-force-muted",
+      (payload: unknown) => {
+
+        const {
+          roomId,
+          userId,
+          forceMuted,
+        } = payload as {
+          roomId: string;
+          userId: string;
+          forceMuted: boolean;
+        };
+
+        if (roomId !== currentRoomIdRef.current) {
+          return;
+        }
+
+        if (userId !== currentUserIdRef.current) {
+          return;
+        }
+
+        if (!forceMuted) {
+          return;
+        }
+
+        const track =
+          localStreamRef.current?.getAudioTracks()[0];
+
+        if (track) {
+          track.enabled = false;
+        }
+
+        dispatch(setForceMutedUser(userId));
+        dispatch(setMuted(true));
+        dispatch(removeUnMutedUser(userId));
+        dispatch(removeSpeakingUser(userId));
+
+        socketManager.emit("user-speaking", {
+          roomId,
+          userId,
+          speaking: false,
+        });
+
+        toast.error(
+          "You have been muted by a moderator."
+        );
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [dispatch]);
+
+  useEffect(() => {
+    const unsubscribe = socketManager.on(
+      "member-force-unmuted",
+      (payload: unknown) => {
+        const {
+          roomId,
+          userId,
+        } = payload as {
+          roomId: string;
+          userId: string;
+        };
+
+        if (roomId !== currentRoomIdRef.current) {
+          return;
+        }
+
+        if (userId !== currentUserIdRef.current) {
+          return;
+        }
+
+        dispatch(removeForceMutedUser(userId));
+
+        toast.success(
+          "You can now unmute your microphone."
+        );
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [dispatch]);
+
+  const forceMuteUser = (
+    roomId: string,
+    targetUserId: string
+  ) => {
+    socketManager.emit("moderator-mute-user", {
+      roomId,
+      targetUserId,
+    });
+  };
+
+  const forceUnmuteUser = (
+    roomId: string,
+    targetUserId: string
+  ) => {
+    socketManager.emit(
+      "moderator-unmute-user",
+      {
+        roomId,
+        targetUserId,
+      }
+    );
+  };
+
   return (
     <AudioCtx.Provider
       value={{
@@ -300,6 +436,8 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
         startAudio,
         stopAudio,
         toggleMute,
+        forceMuteUser,
+        forceUnmuteUser,
       }}
     >
       {children}

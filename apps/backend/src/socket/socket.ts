@@ -1,6 +1,9 @@
 import { Server } from "socket.io";
 import { Server as HttpServer } from "http";
+import redis from "../redis";
 import { removeMember } from "../lib/room";
+import { canModerateRoom } from "../utils/canModarateRoom";
+import { findSingleItem } from "../lib/room";
 
 let io: Server | null = null;
 
@@ -14,18 +17,30 @@ export const initializeSocket = (server: HttpServer) => {
   io.on("connection", (socket) => {
     console.log("A user connected:", socket.id);
 
-    socket.on("join-room", ({ roomId, user }) => {
+    socket.on("join-room", async ({ roomId, user }) => {
       socket.join(roomId);
-      console.log(
-        `${user.name} joined room ${roomId} user id: ${user.id} socket id: ${socket.id}`
-      );
+      socket.join(`user:${user.id}`);
 
       socket.data.roomId = roomId;
       socket.data.userId = user.id;
       socket.data.socketId = socket.id;
-      console.log("sockets room joined", socket.rooms);
-      // Notify others in the room
-      io?.to(roomId).emit("user-joined", { roomId, user, socketId: socket.id });
+
+      const forceMutedUsers = await redis.smembers(
+        `room:${roomId}:force-muted`,
+      );
+
+      // Tell the joining user the current persistent moderation state
+      socket.to(`user:${user.id}`).emit("room-force-muted-state", {
+        roomId,
+        forceMutedUsers,
+      });
+
+      // Tell everyone that a new user joined
+      socket.to(roomId).emit("user-joined", {
+        roomId,
+        user,
+        socketId: socket.id,
+      });
     });
 
     socket.on("offer", ({ to, offer }) => {
@@ -51,7 +66,9 @@ export const initializeSocket = (server: HttpServer) => {
 
     // mute user
     socket.on("user-mute-status", ({ roomId, userId, isUnMuted }) => {
-      console.log(`🎙 ${userId} ${isUnMuted ? "unmuted" : "muted"} microphone room: ${roomId}`);
+      console.log(
+        `🎙 ${userId} ${isUnMuted ? "unmuted" : "muted"} microphone room: ${roomId}`,
+      );
 
       // Broadcast to others in the same room
       socket.to(roomId).emit("user-mute-status", { roomId, userId, isUnMuted });
@@ -71,7 +88,11 @@ export const initializeSocket = (server: HttpServer) => {
         console.error("Failed to remove member:", err);
       }
 
-      io?.to(roomId).emit("user-left", { roomId, memberId, socketId: socket.id });
+      io?.to(roomId).emit("user-left", {
+        roomId,
+        memberId,
+        socketId: socket.id,
+      });
     });
 
     socket.on("sendMessage", ({ roomId, message }) => {
@@ -86,6 +107,73 @@ export const initializeSocket = (server: HttpServer) => {
         message,
         senderId,
         timestamp: Date.now(),
+      });
+    });
+
+    socket.on("moderator-mute-user", async ({ roomId, targetUserId }) => {
+      try {
+        const moderatorId = socket.data.userId;
+
+        const allowed = await canModerateRoom(roomId, moderatorId);
+
+        if (!allowed) {
+          socket.emit("moderation-error", {
+            message: "You don't have permission to mute members.",
+          });
+
+          return;
+        }
+
+        const room = await findSingleItem(roomId);
+
+        if (!room) {
+          return;
+        }
+
+        // Never allow moderator to mute host
+        if (room.hostId === targetUserId) {
+          return;
+        }
+
+        await redis.sadd(`room:${roomId}:force-muted`, targetUserId);
+
+        // Notify the target immediately
+        io?.to(`user:${targetUserId}`).emit("member-force-muted", {
+          roomId,
+          userId: targetUserId,
+          forceMuted: true,
+        });
+
+        // Update everyone else's UI
+        io?.to(roomId).emit("member-force-mute-status", {
+          userId: targetUserId,
+          forceMuted: true,
+        });
+      } catch (error) {
+        console.error(error);
+      }
+    });
+
+    socket.on("moderator-unmute-user", async ({ roomId, targetUserId }) => {
+      const moderatorId = socket.data.userId;
+
+      const allowed = await canModerateRoom(roomId, moderatorId);
+
+      if (!allowed) {
+        return;
+      }
+
+      await redis.srem(`room:${roomId}:force-muted`, targetUserId);
+
+      io?.to(`user:${targetUserId}`).emit("member-force-unmuted", {
+        roomId,
+        userId: targetUserId,
+        forceMuted: false,
+      });
+
+      io?.to(roomId).emit("member-force-mute-status", {
+        userId: targetUserId,
+        forceMuted: false,
       });
     });
 

@@ -63,7 +63,7 @@ export default function RoomGrid({
   isJoined: boolean;
   currentUserIsHost?: boolean;
 }) {
-  const { unMutedUsers, speakingUsers } = useAppSelector((state) => state.room);
+  const { unMutedUsers, speakingUsers, forceMutedUsers } = useAppSelector((state) => state.room);
   useSpeakingEvents(room?.id || "");
   const recentlyJoinedIds = useRecentlyJoined(room?.members ?? []);
 
@@ -122,6 +122,7 @@ export default function RoomGrid({
               hostId={room.hostId}
               speakingUsers={speakingUsers}
               unMutedUsers={unMutedUsers}
+              forceMutedUsers={forceMutedUsers}
               currentUserIsHost={currentUserIsHost}
               recentlyJoinedIds={recentlyJoinedIds}
             />
@@ -134,6 +135,7 @@ export default function RoomGrid({
                   hostId={room.hostId}
                   speakingUsers={speakingUsers}
                   unMutedUsers={unMutedUsers}
+                  forceMutedUsers={forceMutedUsers}
                   currentUserIsHost={currentUserIsHost}
                   recentlyJoinedIds={recentlyJoinedIds}
                 />
@@ -148,6 +150,7 @@ export default function RoomGrid({
               hostId={room.hostId}
               speakingUsers={speakingUsers}
               unMutedUsers={unMutedUsers}
+              forceMutedUsers={forceMutedUsers}
               currentUserIsHost={currentUserIsHost}
               recentlyJoinedIds={recentlyJoinedIds}
             />

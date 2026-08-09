@@ -1,11 +1,13 @@
 import React from "react";
 import { RoomMember } from "@/types/room";
 import Image from "next/image";
+import { useParams } from "next/navigation";
 import {
   Pin, Volume2, Crown, MicOff, Mic, ShieldCheck,
   UserX, Flag, UserMinus, ShieldPlus, MoreHorizontal,
 } from "lucide-react";
 import { generateIdenticonAvatar } from "@/utils/generateAvatar";
+import { useAudio } from "@/context/AudioContext";
 
 const MOCK_MODERATOR_IDS = ["2"];
 
@@ -15,6 +17,7 @@ interface RoomParticipantProps {
   hostId: string;
   speakingUsers: string[];
   unMutedUsers: string[];
+  forceMutedUsers: string[];
   currentUserIsHost?: boolean;
   currentUserIsModerator?: boolean;
   recentlyJoinedIds?: string[];
@@ -26,18 +29,42 @@ export default function RoomParticipant({
   hostId,
   speakingUsers,
   unMutedUsers,
+  forceMutedUsers,
   currentUserIsHost = false,
   currentUserIsModerator = false,
 }: RoomParticipantProps) {
   const avatarSvg = member.avatar || generateIdenticonAvatar(member.name, 60);
+
+  const { id } = useParams();
+  const roomId = Array.isArray(id) ? (id[0] ?? "") : (id ?? "");
+
   const isSpeaking = speakingUsers.includes(member.id);
   const isUnMuted = unMutedUsers.includes(member.id);
+  const isForceMuted = forceMutedUsers.includes(member.id);
+
   const isHost = member.id === hostId;
   const isModerator = MOCK_MODERATOR_IDS.includes(member.id);
 
-  // What controls does the viewer see on hover?
-  const canModerate = (currentUserIsHost || currentUserIsModerator) && !isHost;
-  const canHostOnly = currentUserIsHost && !isHost;
+  const {
+    forceMuteUser,
+    forceUnmuteUser,
+  } = useAudio();
+
+  const canModerate =
+    (currentUserIsHost || currentUserIsModerator) &&
+    !isHost;
+
+  const canHostOnly =
+    currentUserIsHost &&
+    !isHost;
+
+  const forceMuteHandler = () => {
+    if (isForceMuted) {
+      forceUnmuteUser(roomId, member.id);
+    } else {
+      forceMuteUser(roomId, member.id);
+    }
+  };
 
   // Role-specific ring / border accent
   const roleBorderClass = isHost
@@ -159,10 +186,19 @@ export default function RoomParticipant({
           {/* Moderator controls: mute, warn */}
           {canModerate && (
             <button
-              className="p-1.5 rounded-lg bg-black/70 border border-amber-500/20 text-amber-400/70 hover:text-amber-400 hover:bg-amber-500/10 transition-all duration-150"
-              title={isUnMuted ? "Mute member" : "Unmute member"}
+              type="button"
+              className={`p-1.5 rounded-lg bg-black/70 border transition-all duration-150 ${isForceMuted
+                  ? "border-green-500/20 text-green-400/70 hover:text-green-400 hover:bg-green-500/10"
+                  : "border-amber-500/20 text-amber-400/70 hover:text-amber-400 hover:bg-amber-500/10"
+                }`}
+              title={isForceMuted ? "Unmute member" : "Mute member"}
+              onClick={forceMuteHandler}
             >
-              {isUnMuted ? <MicOff size={12} /> : <Mic size={12} />}
+              {isForceMuted ? (
+                <MicOff size={12} />
+              ) : (
+                <Mic size={12} />
+              )}
             </button>
           )}
 
