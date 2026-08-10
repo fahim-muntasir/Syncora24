@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 import { generateIdenticonAvatar } from "@/utils/generateAvatar";
 import { useAudio } from "@/context/AudioContext";
+import { useAppDispatch } from "@/libs/hooks";
+import { removeUnMutedUser } from "@/libs/features/room/roomSlice";
 
 const MOCK_MODERATOR_IDS = ["2"];
 
@@ -45,6 +47,8 @@ export default function RoomParticipant({
   const isHost = member.id === hostId;
   const isModerator = MOCK_MODERATOR_IDS.includes(member.id);
 
+  const dispatch = useAppDispatch();
+
   const {
     forceMuteUser,
     forceUnmuteUser,
@@ -62,6 +66,9 @@ export default function RoomParticipant({
     if (isForceMuted) {
       forceUnmuteUser(roomId, member.id);
     } else {
+      if (isUnMuted) {
+        dispatch(removeUnMutedUser(member.id));
+      }
       forceMuteUser(roomId, member.id);
     }
   };

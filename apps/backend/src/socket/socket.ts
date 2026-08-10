@@ -30,7 +30,7 @@ export const initializeSocket = (server: HttpServer) => {
       );
 
       // Tell the joining user the current persistent moderation state
-      socket.to(`user:${user.id}`).emit("room-force-muted-state", {
+      socket.emit("room-force-muted-state", {
         roomId,
         forceMutedUsers,
       });
