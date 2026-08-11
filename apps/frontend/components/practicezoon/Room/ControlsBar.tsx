@@ -9,7 +9,6 @@ import { useAudio } from "@/context/AudioContext";
 import { useAppSelector } from "@/libs/hooks";
 import { useParams } from "next/navigation";
 import { useAppDispatch } from "@/libs/hooks";
-import { setUnMutedUser, removeUnMutedUser } from "@/libs/features/room/roomSlice";
 import toast from "react-hot-toast";
 
 export default function ControlsBar({
@@ -19,7 +18,7 @@ export default function ControlsBar({
   currentUserIsHost?: boolean;
   raisedHandCount?: number;
 }) {
-  const [isVideoOff, setIsVideoOff] = useState(false);
+  const [isVideoOff, setIsVideoOff] = useState(true);
   const [isHandRaised, setIsHandRaised] = useState(false);
   const [hostPanelOpen, setHostPanelOpen] = useState(false);
 
@@ -35,11 +34,6 @@ export default function ControlsBar({
 
   const muteHandler = () => {
     toggleMute(roomId, currentUser?.id || "");
-    if (isMuted) {
-      dispatch(setUnMutedUser(currentUser?.id || ""));
-    } else {
-      dispatch(removeUnMutedUser(currentUser?.id || ""));
-    }
   };
 
   const handleShare = () => {

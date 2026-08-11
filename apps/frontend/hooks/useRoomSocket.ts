@@ -3,6 +3,8 @@ import { useEffect, useRef, useCallback } from "react";
 import { socketManager } from "@/libs/socket/index";
 import { PeerManager } from "@/libs/webrtc/PeerManager";
 import { useAudio } from "@/context/AudioContext";
+import { setForceMutedUsers, setForceMutedUser, removeForceMutedUser } from "@/libs/features/room/roomSlice";
+import { useAppDispatch } from "@/libs/hooks";
 
 export interface RoomUser {
   id: string;
@@ -33,6 +35,7 @@ export function useRoomSocket({
   // streamVersion is the KEY fix — it's a real state value that increments
   // whenever localStreamRef.current changes, allowing effects to fire
   const { startAudio, stopAudio, localStreamRef, streamVersion } = useAudio();
+  const dispatch = useAppDispatch();
 
   const hasJoinedRef = useRef(false);
   const peerManagerRef = useRef<PeerManager | null>(null);
@@ -71,31 +74,37 @@ export function useRoomSocket({
   useEffect(() => {
     if (!roomId) return;
 
-    const unsubJoined = socketManager.on("user-joined", async (payload: unknown) => {
-      const { user, socketId } = payload as { user: RoomUser; socketId: string };
-      console.log(`[useRoomSocket] user-joined: ${user.name} (${socketId})`);
+    const unsubJoined = socketManager.on(
+      "user-joined",
+      async (payload: unknown) => {
+        const { user, socketId } = payload as {
+          user: RoomUser;
+          socketId: string;
+        };
+        console.log(`[useRoomSocket] user-joined: ${user.name} (${socketId})`);
 
-      onUserJoined?.({ user, socketId });
+        onUserJoined?.({ user, socketId });
 
-      if (!peerManagerRef.current) return;
-      const mySocketId = socketManager.getSocket()?.id;
-      if (socketId === mySocketId) return;
+        if (!peerManagerRef.current) return;
+        const mySocketId = socketManager.getSocket()?.id;
+        if (socketId === mySocketId) return;
 
-      const pc = peerManagerRef.current.createConnection(
-        socketId,
-        localStreamRef.current
-      );
+        const pc = peerManagerRef.current.createConnection(
+          socketId,
+          localStreamRef.current,
+        );
 
-      // Only send offer if we have a stream (user is unmuted)
-      if (localStreamRef.current) {
-        const offer = await pc.createOffer({
-          offerToReceiveAudio: true,
-          offerToReceiveVideo: false,
-        });
-        await pc.setLocalDescription(offer);
-        socketManager.emit("offer", { to: socketId, offer });
-      }
-    });
+        // Only send offer if we have a stream (user is unmuted)
+        if (localStreamRef.current) {
+          const offer = await pc.createOffer({
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: false,
+          });
+          await pc.setLocalDescription(offer);
+          socketManager.emit("offer", { to: socketId, offer });
+        }
+      },
+    );
 
     const unsubLeft = socketManager.on("user-left", (payload: unknown) => {
       const { memberId, socketId } = payload as {
@@ -123,7 +132,11 @@ export function useRoomSocket({
         offer: RTCSessionDescriptionInit;
       };
       console.log(`[useRoomSocket] Received offer from ${from}`);
-      await peerManagerRef.current?.handleOffer(from, offer, localStreamRef.current);
+      await peerManagerRef.current?.handleOffer(
+        from,
+        offer,
+        localStreamRef.current,
+      );
     });
 
     const unsubAnswer = socketManager.on("answer", async (payload: unknown) => {
@@ -135,13 +148,16 @@ export function useRoomSocket({
       await peerManagerRef.current?.handleAnswer(from, answer);
     });
 
-    const unsubIce = socketManager.on("ice-candidate", async (payload: unknown) => {
-      const { from, candidate } = payload as {
-        from: string;
-        candidate: RTCIceCandidateInit;
-      };
-      await peerManagerRef.current?.handleIceCandidate(from, candidate);
-    });
+    const unsubIce = socketManager.on(
+      "ice-candidate",
+      async (payload: unknown) => {
+        const { from, candidate } = payload as {
+          from: string;
+          candidate: RTCIceCandidateInit;
+        };
+        await peerManagerRef.current?.handleIceCandidate(from, candidate);
+      },
+    );
 
     return () => {
       unsubOffer();
@@ -159,9 +175,11 @@ export function useRoomSocket({
     if (!peerManagerRef.current) return;
     if (peerManagerRef.current.getPeerCount() === 0) return;
 
-    console.log(`[useRoomSocket] Stream available (v${streamVersion}), renegotiating with ${peerManagerRef.current.getPeerCount()} peers`);
+    console.log(
+      `[useRoomSocket] Stream available (v${streamVersion}), renegotiating with ${peerManagerRef.current.getPeerCount()} peers`,
+    );
     peerManagerRef.current.renegotiateAll(localStreamRef.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streamVersion]); // ← streamVersion is the trigger, not the ref
 
   // ── Cleanup if unmounted without joining ────────────────────────────────────
@@ -174,6 +192,52 @@ export function useRoomSocket({
       }
     };
   }, [currentUserId, stopAudio]);
+
+  useEffect(() => {
+    if (!roomId) return;
+
+    const unsubscribe = socketManager.on(
+      "room-force-muted-state",
+      (payload: unknown) => {
+        const { roomId: eventRoomId, forceMutedUsers } = payload as {
+          roomId: string;
+          forceMutedUsers: string[];
+        };
+
+        if (eventRoomId !== roomId) {
+          return;
+        }
+
+        dispatch(setForceMutedUsers(forceMutedUsers ?? []));
+
+        console.log("[useRoomSocket] Force muted users:", forceMutedUsers);
+      },
+    );
+
+    return unsubscribe;
+  }, [roomId, dispatch]);
+
+  useEffect(() => {
+    if (!roomId) return;
+
+    const unsubscribe = socketManager.on(
+      "member-force-mute-status",
+      (payload: unknown) => {
+        const { userId, forceMuted } = payload as {
+          userId: string;
+          forceMuted: boolean;
+        };
+
+        if (forceMuted) {
+          dispatch(setForceMutedUser(userId));
+        } else {
+          dispatch(removeForceMutedUser(userId));
+        }
+      },
+    );
+
+    return unsubscribe;
+  }, [roomId, dispatch]);
 
   return {
     joinRoom,
