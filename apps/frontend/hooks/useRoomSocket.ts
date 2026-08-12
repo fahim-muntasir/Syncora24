@@ -3,7 +3,14 @@ import { useEffect, useRef, useCallback } from "react";
 import { socketManager } from "@/libs/socket/index";
 import { PeerManager } from "@/libs/webrtc/PeerManager";
 import { useAudio } from "@/context/AudioContext";
-import { setForceMutedUsers, setForceMutedUser, removeForceMutedUser } from "@/libs/features/room/roomSlice";
+import {
+  setForceMutedUsers,
+  setForceMutedUser,
+  removeForceMutedUser,
+  setMuteAll,
+  setMuteAllExcludedUsers,
+  clearUnMutedUsersExcept,
+} from "@/libs/features/room/roomSlice";
 import { useAppDispatch } from "@/libs/hooks";
 
 export interface RoomUser {
@@ -166,7 +173,6 @@ export function useRoomSocket({
     };
   }, [roomId, localStreamRef]);
 
-  // ── THE FIX: Renegotiate when stream appears (streamVersion changes) ────────
   // streamVersion is real React state, so this effect correctly fires when
   // the user unmutes for the first time and localStreamRef.current is set.
   useEffect(() => {
@@ -199,9 +205,16 @@ export function useRoomSocket({
     const unsubscribe = socketManager.on(
       "room-force-muted-state",
       (payload: unknown) => {
-        const { roomId: eventRoomId, forceMutedUsers } = payload as {
+        const {
+          roomId: eventRoomId,
+          forceMutedUsers,
+          muteAll,
+          muteAllExcludedUsers,
+        } = payload as {
           roomId: string;
           forceMutedUsers: string[];
+          muteAll: boolean;
+          muteAllExcludedUsers: string[];
         };
 
         if (eventRoomId !== roomId) {
@@ -209,8 +222,8 @@ export function useRoomSocket({
         }
 
         dispatch(setForceMutedUsers(forceMutedUsers ?? []));
-
-        console.log("[useRoomSocket] Force muted users:", forceMutedUsers);
+        dispatch(setMuteAll(muteAll ?? false));
+        dispatch(setMuteAllExcludedUsers(muteAllExcludedUsers ?? []));
       },
     );
 
@@ -232,6 +245,39 @@ export function useRoomSocket({
           dispatch(setForceMutedUser(userId));
         } else {
           dispatch(removeForceMutedUser(userId));
+        }
+      },
+    );
+
+    return unsubscribe;
+  }, [roomId, dispatch]);
+
+  useEffect(() => {
+    if (!roomId) return;
+
+    const unsubscribe = socketManager.on(
+      "room-mute-all-state",
+      (payload: unknown) => {
+        const {
+          roomId: eventRoomId,
+          muteAll,
+          muteAllExcludedUsers,
+        } = payload as {
+          roomId: string;
+          muteAll: boolean;
+          muteAllExcludedUsers: string[];
+        };
+
+        if (eventRoomId !== roomId) {
+          return;
+        }
+
+        dispatch(setMuteAll(muteAll));
+
+        dispatch(setMuteAllExcludedUsers(muteAllExcludedUsers ?? []));
+
+        if (muteAll) {
+          dispatch(clearUnMutedUsersExcept(muteAllExcludedUsers ?? []));
         }
       },
     );

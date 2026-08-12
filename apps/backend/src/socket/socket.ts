@@ -29,10 +29,18 @@ export const initializeSocket = (server: HttpServer) => {
         `room:${roomId}:force-muted`,
       );
 
+      const muteAll = (await redis.get(`room:${roomId}:mute-all`)) === "1";
+
+      const room = await findSingleItem(roomId);
+
+      const muteAllExcludedUsers = room ? [room.hostId] : [];
+
       // Tell the joining user the current persistent moderation state
       socket.emit("room-force-muted-state", {
         roomId,
         forceMutedUsers,
+        muteAll,
+        muteAllExcludedUsers,
       });
 
       // Tell everyone that a new user joined
@@ -175,6 +183,43 @@ export const initializeSocket = (server: HttpServer) => {
         userId: targetUserId,
         forceMuted: false,
       });
+    });
+
+    socket.on("moderator-set-mute-all", async ({ roomId, muteAll }) => {
+      try {
+        const moderatorId = socket.data.userId;
+
+        const allowed = await canModerateRoom(roomId, moderatorId);
+
+        if (!allowed) {
+          socket.emit("moderation-error", {
+            message: "You don't have permission to mute everyone.",
+          });
+
+          return;
+        }
+
+        const room = await findSingleItem(roomId);
+
+        if (!room) return;
+
+        if (muteAll) {
+          await redis.set(`room:${roomId}:mute-all`, "1");
+        } else {
+          await redis.del(`room:${roomId}:mute-all`);
+        }
+
+        const muteAllExcludedUsers = muteAll ? [room.hostId] : [];
+
+        // Tell everyone currently in the room
+        io?.to(roomId).emit("room-mute-all-state", {
+          roomId,
+          muteAll,
+          muteAllExcludedUsers,
+        });
+      } catch (error) {
+        console.error("Failed to change mute-all state:", error);
+      }
     });
 
     socket.on("disconnect", async () => {

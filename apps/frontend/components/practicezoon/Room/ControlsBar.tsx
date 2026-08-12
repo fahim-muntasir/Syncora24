@@ -8,8 +8,8 @@ import ControlButton from "./ControlButton";
 import { useAudio } from "@/context/AudioContext";
 import { useAppSelector } from "@/libs/hooks";
 import { useParams } from "next/navigation";
-import { useAppDispatch } from "@/libs/hooks";
 import toast from "react-hot-toast";
+import { socketManager } from "@/libs/socket/index";
 
 export default function ControlsBar({
   currentUserIsHost = false,
@@ -26,7 +26,6 @@ export default function ControlsBar({
   const currentUser = useAppSelector((state) => state.auth.user);
   const { id } = useParams();
   const roomId = Array.isArray(id) ? (id[0] ?? "") : (id ?? "");
-  const dispatch = useAppDispatch();
 
   const handleLeaveRoom = async () => {
     window.location.reload();
@@ -43,6 +42,20 @@ export default function ControlsBar({
     }
   };
 
+  const muteAll = useAppSelector(
+    (state) => state.room.muteAll
+  );
+
+  const handleMuteAll = () => {
+    socketManager.emit(
+      "moderator-set-mute-all",
+      {
+        roomId,
+        muteAll: !muteAll,
+      }
+    );
+  };
+
   return (
     <div>
       {/* ── HOST QUICK PANEL (expandable strip above bar) ── */}
@@ -52,8 +65,9 @@ export default function ControlsBar({
             <Crown size={9} /> Host controls
           </span>
           <div className="flex items-center gap-2 flex-wrap">
-            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.08] text-xs text-gray-300 hover:bg-white/[0.08] hover:text-white transition-all">
-              <MuteAll size={12} className="text-amber-400" /> Mute all
+            <button onClick={handleMuteAll} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.08] text-xs text-gray-300 hover:bg-white/[0.08] hover:text-white transition-all">
+              {muteAll ? <Mic size={12} className="text-red-400" /> : <MuteAll size={12} className="text-green-400" />}
+              {muteAll ? "Unmute all" : "Mute all"}
             </button>
             <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.08] text-xs text-gray-300 hover:bg-white/[0.08] hover:text-white transition-all">
               <Users size={12} className="text-blue-400" /> Manage participants
