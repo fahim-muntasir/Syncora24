@@ -6,6 +6,8 @@ interface RoomState {
   speakingUsers: string[];
   unMutedUsers: string[];
   forceMutedUsers: string[];
+  muteAll: boolean;
+  muteAllExcludedUsers: string[];
 }
 
 const initialState: RoomState = {
@@ -14,6 +16,8 @@ const initialState: RoomState = {
   speakingUsers: [],
   unMutedUsers: [],
   forceMutedUsers: [],
+  muteAll: false,
+  muteAllExcludedUsers: [],
 };
 
 const roomSlice = createSlice({
@@ -48,6 +52,13 @@ const roomSlice = createSlice({
     clearUnMutedUsers: (state) => {
       state.unMutedUsers = [];
     },
+    clearUnMutedUsersExcept: (state, action: PayloadAction<string[]>) => {
+      const excludedUsers = action.payload;
+
+      state.unMutedUsers = state.unMutedUsers.filter((userId) =>
+        excludedUsers.includes(userId),
+      );
+    },
     setForceMutedUser: (state, action: PayloadAction<string>) => {
       if (!state.forceMutedUsers.includes(action.payload)) {
         state.forceMutedUsers.push(action.payload);
@@ -63,6 +74,12 @@ const roomSlice = createSlice({
     },
     clearForceMutedUsers: (state) => {
       state.forceMutedUsers = [];
+    },
+    setMuteAll: (state, action: PayloadAction<boolean>) => {
+      state.muteAll = action.payload;
+    },
+    setMuteAllExcludedUsers: (state, action: PayloadAction<string[]>) => {
+      state.muteAllExcludedUsers = action.payload;
     },
   },
 });
@@ -80,6 +97,9 @@ export const {
   removeForceMutedUser,
   clearForceMutedUsers,
   setForceMutedUsers,
+  setMuteAll,
+  clearUnMutedUsersExcept,
+  setMuteAllExcludedUsers,
 } = roomSlice.actions;
 
 export default roomSlice.reducer;

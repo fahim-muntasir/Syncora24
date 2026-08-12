@@ -23,6 +23,8 @@ interface RoomParticipantProps {
   currentUserIsHost?: boolean;
   currentUserIsModerator?: boolean;
   recentlyJoinedIds?: string[];
+  muteAll?: boolean;
+  muteAllExcludedUsers?: string[];
 }
 
 export default function RoomParticipant({
@@ -34,6 +36,8 @@ export default function RoomParticipant({
   forceMutedUsers,
   currentUserIsHost = false,
   currentUserIsModerator = false,
+  muteAll = false,
+  muteAllExcludedUsers = [],
 }: RoomParticipantProps) {
   const avatarSvg = member.avatar || generateIdenticonAvatar(member.name, 60);
 
@@ -41,8 +45,16 @@ export default function RoomParticipant({
   const roomId = Array.isArray(id) ? (id[0] ?? "") : (id ?? "");
 
   const isSpeaking = speakingUsers.includes(member.id);
-  const isUnMuted = unMutedUsers.includes(member.id);
-  const isForceMuted = forceMutedUsers.includes(member.id);
+  const isForceMuted =
+    forceMutedUsers.includes(member.id) ||
+    (
+      muteAll &&
+      !muteAllExcludedUsers.includes(member.id)
+    );
+
+  const isUnMuted =
+    unMutedUsers.includes(member.id) &&
+    !isForceMuted;
 
   const isHost = member.id === hostId;
   const isModerator = MOCK_MODERATOR_IDS.includes(member.id);
@@ -195,8 +207,8 @@ export default function RoomParticipant({
             <button
               type="button"
               className={`p-1.5 rounded-lg bg-black/70 border transition-all duration-150 ${isForceMuted
-                  ? "border-green-500/20 text-green-400/70 hover:text-green-400 hover:bg-green-500/10"
-                  : "border-amber-500/20 text-amber-400/70 hover:text-amber-400 hover:bg-amber-500/10"
+                ? "border-green-500/20 text-green-400/70 hover:text-green-400 hover:bg-green-500/10"
+                : "border-amber-500/20 text-amber-400/70 hover:text-amber-400 hover:bg-amber-500/10"
                 }`}
               title={isForceMuted ? "Unmute member" : "Mute member"}
               onClick={forceMuteHandler}

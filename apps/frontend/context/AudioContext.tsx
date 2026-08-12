@@ -51,19 +51,29 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const dispatch = useAppDispatch();
   const isMuted = useAppSelector((s) => s.room.isMuted);
+  const muteAllExcludedUsers = useAppSelector((s) => s.room.muteAllExcludedUsers);
   const [isAudioEnabled, setIsAudioEnabled] = useState(false);
 
   const currentUserId = useAppSelector((state) => state.auth.user?.id ?? "");
 
+  const muteAll = useAppSelector(
+    (state) => state.room.muteAll
+  );
   const forceMutedUsers = useAppSelector(
     (state) => state.room.forceMutedUsers
   );
 
-  const isForceMuted = currentUserId
-    ? forceMutedUsers.includes(currentUserId)
-    : false;
+  // const isForceMuted = currentUserId
+  //   ? forceMutedUsers.includes(currentUserId)
+  //   : false;
 
-  // ── helpers ─────────────────────────────────────────────────────────────────
+  const isForceMuted =
+  forceMutedUsers.includes(currentUserId) ||
+  (
+    muteAll &&
+    !muteAllExcludedUsers.includes(currentUserId)
+  );
+
 
   /** Safely get-or-create a running AudioContext */
   const getAudioContext = useCallback(async (): Promise<AudioContext> => {
@@ -313,6 +323,35 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     };
   }, [stopDetectionLoop]);
+
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    // const isForceMuted =
+    //   muteAll ||
+    //   forceMutedUsers.includes(currentUserId);
+
+    if (!isForceMuted) {
+      return;
+    }
+
+    const track =
+      localStreamRef.current?.getAudioTracks()[0];
+
+    if (track) {
+      track.enabled = false;
+    }
+
+    dispatch(setMuted(true));
+    dispatch(removeUnMutedUser(currentUserId));
+    dispatch(removeSpeakingUser(currentUserId));
+
+  }, [
+    muteAll,
+    forceMutedUsers,
+    currentUserId,
+    dispatch,
+  ]);
 
   useEffect(() => {
     const unsubscribe = socketManager.on(
