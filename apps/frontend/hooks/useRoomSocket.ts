@@ -78,6 +78,7 @@ export function useRoomSocket({
   }, [roomId, currentUserId, stopAudio]);
 
   // ── user-joined / user-left ─────────────────────────────────────────────────
+
   useEffect(() => {
     if (!roomId) return;
 
@@ -101,15 +102,12 @@ export function useRoomSocket({
           localStreamRef.current,
         );
 
-        // Only send offer if we have a stream (user is unmuted)
-        if (localStreamRef.current) {
-          const offer = await pc.createOffer({
-            offerToReceiveAudio: true,
-            offerToReceiveVideo: false,
-          });
-          await pc.setLocalDescription(offer);
-          socketManager.emit("offer", { to: socketId, offer });
-        }
+        const offer = await pc.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: false,
+        });
+        await pc.setLocalDescription(offer);
+        socketManager.emit("offer", { to: socketId, offer });
       },
     );
 
@@ -127,7 +125,7 @@ export function useRoomSocket({
       unsubJoined();
       unsubLeft();
     };
-  }, [roomId, onUserJoined, onUserLeft, localStreamRef]);
+  }, [roomId, onUserJoined, onUserLeft, streamVersion]);
 
   // ── WebRTC signaling ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -171,7 +169,7 @@ export function useRoomSocket({
       unsubAnswer();
       unsubIce();
     };
-  }, [roomId, localStreamRef]);
+  }, [roomId, streamVersion]);
 
   // streamVersion is real React state, so this effect correctly fires when
   // the user unmutes for the first time and localStreamRef.current is set.
@@ -186,7 +184,7 @@ export function useRoomSocket({
     );
     peerManagerRef.current.renegotiateAll(localStreamRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [streamVersion]); // ← streamVersion is the trigger, not the ref
+  }, [streamVersion]);
 
   // ── Cleanup if unmounted without joining ────────────────────────────────────
   useEffect(() => {

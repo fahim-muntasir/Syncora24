@@ -1,4 +1,3 @@
-// app/practicezoon/[id]/page.tsx
 "use client";
 import React, { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
@@ -19,7 +18,7 @@ export default function VideoConference() {
 
   const { id } = useParams();
   const roomId = Array.isArray(id) ? id[0] : (id ?? "");
-  const { data, isSuccess, refetch } = useGetSingleRoomQuery(roomId, {
+  const { data, isSuccess } = useGetSingleRoomQuery(roomId, {
     refetchOnMountOrArgChange: true,
   });
   const currentUser = useAppSelector((state) => state.auth.user);
@@ -44,7 +43,6 @@ export default function VideoConference() {
       if (prev.members.some((m) => m.id === user.id)) return prev;
       return { ...prev, members: [...prev.members, user] };
     });
-    refetch();
   };
 
   const handleUserLeft = ({ memberId }: { memberId: string }) => {
