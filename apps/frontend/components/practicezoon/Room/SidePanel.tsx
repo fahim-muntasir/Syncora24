@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   ChevronRight, MessageSquareText, Users, HelpCircle,
-  ShieldCheck, Crown, Mic, MicOff, UserMinus, Flag,
-  Clock, Sparkles, ArrowRightCircle,
+  ShieldCheck, Mic, UserMinus, Flag,
+  Clock, ArrowRightCircle,
   Activity,
 } from "lucide-react";
 import { socketManager } from "@/libs/socket/index";
@@ -10,153 +10,13 @@ import { useAppSelector } from "@/libs/hooks";
 import Chat from "./Chat";
 import { IncomingMessage, Message } from "@/types/chat";
 import { RoomType } from "@/types/room";
-import Image from "next/image";
-import { generateIdenticonAvatar } from "@/utils/generateAvatar";
+import ParticipantsList from "./ParticipantsList";
 
-// Minimal activity event type for the feed
 interface ActivityEvent {
   id: string;
   type: "joined" | "left" | "speaking" | "raised_hand";
   name: string;
   timestamp: Date;
-}
-
-// Mock moderator IDs — replace with real store/context
-const MOCK_MODERATOR_IDS = ["2"];
-
-// ── PARTICIPANT LIST COMPONENT ─────────────────────────────────────
-function ParticipantsList({
-  room,
-  speakingUsers,
-  unMutedUsers,
-  currentUserIsHost,
-}: {
-  room: RoomType | null;
-  speakingUsers: string[];
-  unMutedUsers: string[];
-  currentUserIsHost?: boolean;
-}) {
-  if (!room) return (
-    <div className="flex items-center justify-center h-32 text-gray-600 text-sm">
-      Loading participants…
-    </div>
-  );
-
-  const host = room.members.filter((m) => m.id === room.hostId);
-  const moderators = room.members.filter((m) => MOCK_MODERATOR_IDS.includes(m.id) && m.id !== room.hostId);
-  const members = room.members.filter((m) => m.id !== room.hostId && !MOCK_MODERATOR_IDS.includes(m.id));
-
-  const renderMember = (member: typeof room.members[0], roleLabel: string, roleColor: string) => {
-    const isSpeaking = speakingUsers.includes(member.id);
-    const isUnMuted = unMutedUsers.includes(member.id);
-    const avatarSvg = !member.avatar ? generateIdenticonAvatar(member.name, 36) : null;
-
-    return (
-      <div
-        key={member.id}
-        className={`group flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-200 hover:bg-white/[0.04] ${isSpeaking ? "bg-green-500/5 border border-green-500/10" : ""
-          }`}
-      >
-        {/* Avatar */}
-        <div className="relative flex-shrink-0">
-          {member.avatar ? (
-            <Image
-              src={member.avatar}
-              alt={member.name}
-              width={36}
-              height={36}
-              className="w-9 h-9 rounded-full object-cover border border-white/10"
-            />
-          ) : (
-            <div
-              dangerouslySetInnerHTML={{ __html: avatarSvg! }}
-              className="w-9 h-9 rounded-full overflow-hidden border border-white/10"
-            />
-          )}
-          {/* Online dot */}
-          <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#0e0e0e] bg-green-400" />
-        </div>
-
-        {/* Info */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="text-white text-xs font-medium truncate">{member.name}</span>
-            {isSpeaking && (
-              <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-            )}
-          </div>
-          <span className={`text-[10px] font-medium ${roleColor}`}>{roleLabel}</span>
-        </div>
-
-        {/* Right: mic + actions */}
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <div className={`p-1 rounded-md ${isUnMuted ? "text-green-400/80" : "text-red-400/50"}`}>
-            {isUnMuted ? <Mic size={11} /> : <MicOff size={11} />}
-          </div>
-
-          {/* Host-only quick actions */}
-          {currentUserIsHost && member.id !== room.hostId && (
-            <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity">
-              <button className="p-1 rounded-md hover:bg-white/[0.08] text-gray-600 hover:text-orange-400 transition-colors" title="Remove">
-                <UserMinus size={11} />
-              </button>
-              <button className="p-1 rounded-md hover:bg-white/[0.08] text-gray-600 hover:text-blue-400 transition-colors" title="Report">
-                <Flag size={11} />
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <div className="flex-1 overflow-y-auto px-2 py-3 space-y-4 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-      {/* Host section */}
-      {host.length > 0 && (
-        <div>
-          <div className="flex items-center gap-1.5 px-3 mb-1.5">
-            <Crown size={10} className="text-amber-400/70" />
-            <span className="text-[10px] font-bold uppercase tracking-widest text-amber-500/60">Host</span>
-          </div>
-          {host.map((m) => renderMember(m, "Host", "text-amber-400"))}
-        </div>
-      )}
-
-      {/* Moderators section */}
-      {moderators.length > 0 && (
-        <div>
-          <div className="flex items-center gap-1.5 px-3 mb-1.5">
-            <ShieldCheck size={10} className="text-blue-400/70" />
-            <span className="text-[10px] font-bold uppercase tracking-widest text-blue-500/60">Moderators</span>
-          </div>
-          {moderators.map((m) => renderMember(m, "Moderator", "text-blue-400"))}
-        </div>
-      )}
-
-      {/* Members section */}
-      {members.length > 0 && (
-        <div>
-          <div className="flex items-center gap-1.5 px-3 mb-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-600">
-              Members · {members.length}
-            </span>
-          </div>
-          {members.map((m) => renderMember(m, "Member", "text-gray-500"))}
-        </div>
-      )}
-
-      {/* Future: AI insights placeholder */}
-      <div className="mx-1 p-3 rounded-xl border border-dashed border-purple-500/15 bg-purple-500/3">
-        <div className="flex items-center gap-2 mb-1">
-          <Sparkles size={12} className="text-purple-400/40" />
-          <span className="text-[10px] font-semibold text-purple-400/40 uppercase tracking-wider">AI Insights</span>
-          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/15 text-purple-400/50">Soon</span>
-        </div>
-        <p className="text-[10px] text-gray-700">Participation scores, speaking time, communication streaks and country badges will appear here.</p>
-      </div>
-    </div>
-  );
 }
 
 // ── ACTIVITY FEED COMPONENT ────────────────────────────────────────
