@@ -1,4 +1,3 @@
-// components/practicezoon/RoomCardList.tsx
 "use client";
 import React, { useState, useEffect } from "react";
 import { RoomCard } from "./RoomCard";
@@ -8,7 +7,6 @@ import { socketManager } from "@/libs/socket/index";
 import { isRoomsResponse } from "@/utils/typeGuardsForRoom";
 import EmptyRoomCard from "../common/EmptyRoomCard";
 
-// Skeleton card for loading state
 function RoomCardSkeleton() {
   return (
     <div className="bg-[#161616] border border-white/[0.07] rounded-2xl p-5 flex flex-col gap-5 animate-pulse">
@@ -52,6 +50,23 @@ export default function RoomCardList() {
       setRooms(initialRooms.data);
     }
   }, [initialRooms]);
+
+  useEffect(() => {
+    const unsubscribe = socketManager.on(
+      "room-ended",
+      (payload: unknown) => {
+        const { roomId } = payload as {
+          roomId: string;
+        };
+
+        setRooms((prevRooms) =>
+          prevRooms.filter((room) => room.id !== roomId)
+        );
+      }
+    );
+
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     const unsubCreated = socketManager.on("roomCreated", (payload) => {
