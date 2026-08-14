@@ -244,12 +244,22 @@ export const initializeSocket = (server: HttpServer) => {
           return;
         }
 
-        // End room...
+        await redis.call(
+          "JSON.SET",
+          `room:${roomId}`,
+          "$.status",
+          JSON.stringify("ended"),
+        );
+
         await redis.del(`room:${roomId}:force-muted`);
         await redis.del(`room:${roomId}:mute-all`);
-        await redis.del(`room:${roomId}`);
 
-        io?.to(roomId).emit("room-ended", {
+        io?.to(roomId).emit("room-ended-for-members", {
+          roomId,
+          endedBy: userId,
+        });
+
+        io?.emit("room-ended", {
           roomId,
           endedBy: userId,
         });

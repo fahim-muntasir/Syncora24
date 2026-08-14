@@ -469,7 +469,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
 
   useEffect(() => {
     const unsubscribe = socketManager.on(
-      "room-ended",
+      "room-ended-for-members",
       (payload: unknown) => {
         const { roomId: eventRoomId } = payload as {
           roomId: string;

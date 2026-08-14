@@ -60,7 +60,11 @@ export default function RoomCardList() {
         };
 
         setRooms((prevRooms) =>
-          prevRooms.filter((room) => room.id !== roomId)
+          prevRooms.map((room) =>
+            room.id === roomId
+              ? { ...room, status: "ended" }
+              : room
+          )
         );
       }
     );
