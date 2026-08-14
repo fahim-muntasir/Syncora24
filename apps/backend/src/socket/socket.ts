@@ -222,6 +222,52 @@ export const initializeSocket = (server: HttpServer) => {
       }
     });
 
+    socket.on("end-room", async ({ roomId }) => {
+      try {
+        const userId = socket.data.userId;
+
+        const room = await findSingleItem(roomId);
+
+        if (!room) {
+          socket.emit("moderation-error", {
+            message: "Room not found.",
+          });
+
+          return;
+        }
+
+        if (room.hostId !== userId) {
+          socket.emit("moderation-error", {
+            message: "Only the host can end this room.",
+          });
+
+          return;
+        }
+
+        await redis.call(
+          "JSON.SET",
+          `room:${roomId}`,
+          "$.status",
+          JSON.stringify("ended"),
+        );
+
+        await redis.del(`room:${roomId}:force-muted`);
+        await redis.del(`room:${roomId}:mute-all`);
+
+        io?.to(roomId).emit("room-ended-for-members", {
+          roomId,
+          endedBy: userId,
+        });
+
+        io?.emit("room-ended", {
+          roomId,
+          endedBy: userId,
+        });
+      } catch (error) {
+        console.error("Failed to end room:", error);
+      }
+    });
+
     socket.on("disconnect", async () => {
       console.log("User disconnected:", socket.id);
 

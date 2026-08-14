@@ -62,21 +62,32 @@ export const RoomCard = forwardRef<HTMLDivElement, RoomCardProps>(({ room }, ref
     return 'w-12 h-12';
   };
 
-  const isActive = room.members.length > 0;
+  const isEnded = room.status === "ended";
+  const isActive = room.members.length > 0 && !isEnded;
   const isFull = !isUnlimited && room.members.length >= room.maxParticipants;
 
   const handleRoomClick = (roomId: string) => {
+    if (isEnded) return;
+
     router.push(`/room/${roomId}`);
   };
+
 
   return (
     <div
       ref={ref}
-      className="group relative bg-[#161616] border border-white/[0.07] rounded-2xl p-5 transition-all duration-300 flex flex-col gap-5 cursor-pointer hover:border-white/[0.14] hover:-translate-y-0.5 hover:shadow-2xl hover:shadow-black/40"
+      className={`group relative bg-[#161616] border rounded-2xl p-5 transition-all duration-300 flex flex-col gap-5 ${isEnded
+        ? "border-white/[0.04] opacity-60 cursor-not-allowed"
+        : "border-white/[0.07] cursor-pointer hover:border-white/[0.14] hover:-translate-y-0.5 hover:shadow-2xl hover:shadow-black/40"
+        }`}
       onClick={() => handleRoomClick(room.id)}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => e.key === 'Enter' && handleRoomClick(room.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && !isEnded) {
+          handleRoomClick(room.id);
+        }
+      }}
     >
       {/* Subtle hover glow */}
       <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
@@ -117,28 +128,36 @@ export const RoomCard = forwardRef<HTMLDivElement, RoomCardProps>(({ room }, ref
             <Users size={12} />
             <span>{room.members.length}/{isUnlimited ? '∞' : room.maxParticipants}</span>
           </div>
-          {isActive && (
-            <div className="flex items-center gap-1 text-[10px] text-green-400 font-medium">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-400" />
-              </span>
-              Live
-            </div>
-          )}
-          {isFull && (
-            <span className="text-[10px] text-orange-400 font-medium bg-orange-500/10 border border-orange-500/20 px-2 py-0.5 rounded-full">
-              Full
+          {isEnded ? (
+            <span className="text-[10px] text-gray-500 font-medium bg-white/[0.04] border border-white/[0.06] px-2 py-0.5 rounded-full">
+              Ended
             </span>
+          ) : (
+            <>
+              {isActive && (
+                <div className="flex items-center gap-1 text-[10px] text-green-400 font-medium">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-400" />
+                  </span>
+                  Live
+                </div>
+              )}
+
+              {isFull && (
+                <span className="text-[10px] text-orange-400 font-medium bg-orange-500/10 border border-orange-500/20 px-2 py-0.5 rounded-full">
+                  Full
+                </span>
+              )}
+            </>
           )}
         </div>
       </div>
 
       {/* Members grid */}
       <div
-        className={`grid w-max ${gridColsClass} gap-2.5 ${
-          room.maxParticipants < 3 ? 'justify-start' : 'justify-between'
-        } mx-auto`}
+        className={`grid w-max ${gridColsClass} gap-2.5 ${room.maxParticipants < 3 ? 'justify-start' : 'justify-between'
+          } mx-auto`}
       >
         {isUnlimited ? (
           room.members.map((member) => (
@@ -203,12 +222,22 @@ export const RoomCard = forwardRef<HTMLDivElement, RoomCardProps>(({ room }, ref
       <div className="flex items-center justify-between pt-3 border-t border-white/[0.06]">
         <div className="flex items-center gap-1.5 text-gray-600 text-xs">
           <Mic size={11} />
-          <span>Voice room</span>
+          <span>{isEnded ? "Room ended" : "Voice room"}</span>
         </div>
-        <div className="flex items-center gap-1.5 text-green-400 text-xs font-medium group-hover:gap-2.5 transition-all duration-200">
-          Join room
-          <ArrowRight size={13} className="group-hover:translate-x-0.5 transition-transform duration-200" />
-        </div>
+
+        {isEnded ? (
+          <div className="flex items-center gap-1.5 text-gray-600 text-xs font-medium">
+            Room unavailable
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 text-green-400 text-xs font-medium group-hover:gap-2.5 transition-all duration-200">
+            Join room
+            <ArrowRight
+              size={13}
+              className="group-hover:translate-x-0.5 transition-transform duration-200"
+            />
+          </div>
+        )}
       </div>
     </div>
   );

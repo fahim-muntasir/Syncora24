@@ -56,6 +56,12 @@ export default function ControlsBar({
     );
   };
 
+  const handleEndRoom = () => {
+    socketManager.emit("end-room", {
+      roomId,
+    });
+  };
+
   return (
     <div>
       {/* ── HOST QUICK PANEL (expandable strip above bar) ── */}
@@ -75,7 +81,7 @@ export default function ControlsBar({
             <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.08] text-xs text-gray-300 hover:bg-white/[0.08] hover:text-white transition-all">
               <ShieldCheck size={12} className="text-emerald-400" /> Safety settings
             </button>
-            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-400 hover:bg-red-500/15 transition-all">
+            <button onClick={handleEndRoom} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-400 hover:bg-red-500/15 transition-all">
               <PhoneOff size={12} /> End room
             </button>
           </div>

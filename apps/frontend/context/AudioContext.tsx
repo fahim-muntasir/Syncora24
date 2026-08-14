@@ -14,6 +14,8 @@ import {
   setMuted,
   setSpeakingUser,
   removeSpeakingUser,
+  clearForceMutedUsers,
+  clearUnMutedUsers,
 } from "@/libs/features/room/roomSlice";
 import { setUnMutedUser, removeUnMutedUser, setForceMutedUser, removeForceMutedUser } from "@/libs/features/room/roomSlice";
 import toast from "react-hot-toast";
@@ -68,11 +70,11 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
   //   : false;
 
   const isForceMuted =
-  forceMutedUsers.includes(currentUserId) ||
-  (
-    muteAll &&
-    !muteAllExcludedUsers.includes(currentUserId)
-  );
+    forceMutedUsers.includes(currentUserId) ||
+    (
+      muteAll &&
+      !muteAllExcludedUsers.includes(currentUserId)
+    );
 
 
   /** Safely get-or-create a running AudioContext */
@@ -464,6 +466,38 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     );
   };
+
+  useEffect(() => {
+    const unsubscribe = socketManager.on(
+      "room-ended-for-members",
+      (payload: unknown) => {
+        const { roomId: eventRoomId } = payload as {
+          roomId: string;
+        };
+
+        if (eventRoomId !== currentRoomIdRef.current) {
+          return;
+        }
+
+        // stop media
+        stopDetectionLoop();
+        if (localStreamRef.current) {
+          localStreamRef.current.getTracks().forEach((t) => t.stop());
+          localStreamRef.current = null;
+          setStreamVersion((v) => v + 1);
+        }
+        // reset redux
+        dispatch(setAudioEnabled(false));
+        dispatch(setMuted(true));
+        dispatch(clearUnMutedUsers());
+        dispatch(clearForceMutedUsers());
+        // navigate away
+        window.location.replace("/");
+      }
+    );
+
+    return unsubscribe;
+  }, []);
 
   return (
     <AudioCtx.Provider
