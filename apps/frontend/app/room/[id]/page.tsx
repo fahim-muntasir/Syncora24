@@ -9,12 +9,14 @@ import RoomDetailsModal from "@/components/practicezoon/Room/RoomDetailsModal";
 import { socketManager } from "@/libs/socket/index";
 import { useAppSelector } from "@/libs/hooks";
 import { isRoomResponse } from "@/utils/typeGuardsForRoom";
+import RoomEndedModal from "@/components/practicezoon/Room/Modals/RoomEndedModal";
 
 export default function VideoConference() {
   const [room, setRoom] = useState<RoomType | null>(null);
   const [layout] = useState<"grid" | "spotlight">("grid");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isJoined, setIsJoined] = useState(false);
+  const [showRoomEndedModal, setShowRoomEndedModal] = useState(false);
 
   const { id } = useParams();
   const roomId = Array.isArray(id) ? id[0] : (id ?? "");
@@ -36,6 +38,26 @@ export default function VideoConference() {
     if (inRoom) window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [room, currentUser, roomId]);
+
+  useEffect(() => {
+    const unsubscribe = socketManager.on(
+      "room-ended-for-members",
+      (payload: unknown) => {
+        const { roomId: endedRoomId } = payload as {
+          roomId: string;
+          endedBy: string;
+        };
+
+        if (endedRoomId !== roomId) {
+          return;
+        }
+
+        setShowRoomEndedModal(true);
+      }
+    );
+
+    return unsubscribe;
+  }, [roomId]);
 
   const handleUserJoined = ({ user }: { user: { id: string; name: string } }) => {
     setRoom((prev) => {
@@ -62,6 +84,11 @@ export default function VideoConference() {
         onClose={() => setIsJoined(true)}
         handleUserJoined={handleUserJoined}
         handleUserLeft={handleUserLeft}
+      />
+
+      <RoomEndedModal
+        isOpen={showRoomEndedModal}
+        onLeave={() => window.location.replace("/")}
       />
 
       {/* Room layout */}
