@@ -10,6 +10,7 @@ import { useAppSelector } from "@/libs/hooks";
 import { useParams } from "next/navigation";
 import toast from "react-hot-toast";
 import { socketManager } from "@/libs/socket/index";
+import EndRoomConfirmModal from "@/components/practicezoon/Room/Modals/EndRoomConfirmModal";
 
 export default function ControlsBar({
   currentUserIsHost = false,
@@ -21,6 +22,8 @@ export default function ControlsBar({
   const [isVideoOff, setIsVideoOff] = useState(true);
   const [isHandRaised, setIsHandRaised] = useState(false);
   const [hostPanelOpen, setHostPanelOpen] = useState(false);
+  const [showEndRoomModal, setShowEndRoomModal] = useState(false);
+  const [isEndingRoom, setIsEndingRoom] = useState(false);
 
   const { toggleMute, isMuted } = useAudio();
   const currentUser = useAppSelector((state) => state.auth.user);
@@ -56,14 +59,25 @@ export default function ControlsBar({
     );
   };
 
-  const handleEndRoom = () => {
+  const handleConfirmEndRoom = () => {
+    setIsEndingRoom(true);
+
     socketManager.emit("end-room", {
       roomId,
     });
+
+    setShowEndRoomModal(false);
+    setIsEndingRoom(false);
   };
 
   return (
     <div>
+      <EndRoomConfirmModal
+        isOpen={showEndRoomModal}
+        onClose={() => setShowEndRoomModal(false)}
+        onConfirm={handleConfirmEndRoom}
+        isLoading={isEndingRoom}
+      />
       {/* ── HOST QUICK PANEL (expandable strip above bar) ── */}
       {currentUserIsHost && hostPanelOpen && (
         <div className="border-b border-white/[0.06] px-4 py-3 flex items-center gap-3 flex-wrap bg-amber-500/[0.03]">
@@ -81,7 +95,7 @@ export default function ControlsBar({
             <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.08] text-xs text-gray-300 hover:bg-white/[0.08] hover:text-white transition-all">
               <ShieldCheck size={12} className="text-emerald-400" /> Safety settings
             </button>
-            <button onClick={handleEndRoom} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-400 hover:bg-red-500/15 transition-all">
+            <button onClick={() => setShowEndRoomModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-400 hover:bg-red-500/15 transition-all">
               <PhoneOff size={12} /> End room
             </button>
           </div>

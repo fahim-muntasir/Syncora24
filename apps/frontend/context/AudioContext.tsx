@@ -491,8 +491,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
         dispatch(setMuted(true));
         dispatch(clearUnMutedUsers());
         dispatch(clearForceMutedUsers());
-        // navigate away
-        window.location.replace("/");
       }
     );
 
