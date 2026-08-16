@@ -1,9 +1,8 @@
 import { Server } from "socket.io";
 import { Server as HttpServer } from "http";
-import redis from "../redis";
-import { removeMember } from "../lib/room";
 import { canModerateRoom } from "../utils/canModarateRoom";
-import { findSingleItem } from "../lib/room";
+import { removeMember, findSingleItem, endRoom } from "../lib/room";
+import { muteUser, unmuteUser, setMuteAll, getRoomModerationState } from "../lib/moderation";
 
 let io: Server | null = null;
 
@@ -25,22 +24,12 @@ export const initializeSocket = (server: HttpServer) => {
       socket.data.userId = user.id;
       socket.data.socketId = socket.id;
 
-      const forceMutedUsers = await redis.smembers(
-        `room:${roomId}:force-muted`,
-      );
-
-      const muteAll = (await redis.get(`room:${roomId}:mute-all`)) === "1";
-
-      const room = await findSingleItem(roomId);
-
-      const muteAllExcludedUsers = room ? [room.hostId] : [];
+      const moderationState = await getRoomModerationState(roomId)
 
       // Tell the joining user the current persistent moderation state
       socket.emit("room-force-muted-state", {
         roomId,
-        forceMutedUsers,
-        muteAll,
-        muteAllExcludedUsers,
+        ...moderationState,
       });
 
       // Tell everyone that a new user joined
@@ -106,10 +95,6 @@ export const initializeSocket = (server: HttpServer) => {
     socket.on("sendMessage", ({ roomId, message }) => {
       const senderId = socket.data.userId;
 
-      // Log who is in the room
-      const room = io?.sockets.adapter.rooms.get(roomId);
-      console.log("Room members before sending:", Array.from(room || []));
-
       io?.to(roomId).emit("messageReceived", {
         roomId,
         message,
@@ -143,20 +128,13 @@ export const initializeSocket = (server: HttpServer) => {
           return;
         }
 
-        await redis.sadd(`room:${roomId}:force-muted`, targetUserId);
+        const result = await muteUser(roomId, targetUserId);
 
         // Notify the target immediately
-        io?.to(`user:${targetUserId}`).emit("member-force-muted", {
-          roomId,
-          userId: targetUserId,
-          forceMuted: true,
-        });
+        io?.to(`user:${targetUserId}`).emit("member-force-muted", result);
 
         // Update everyone else's UI
-        io?.to(roomId).emit("member-force-mute-status", {
-          userId: targetUserId,
-          forceMuted: true,
-        });
+        io?.to(roomId).emit("member-force-mute-status", result);
       } catch (error) {
         console.error(error);
       }
@@ -171,18 +149,11 @@ export const initializeSocket = (server: HttpServer) => {
         return;
       }
 
-      await redis.srem(`room:${roomId}:force-muted`, targetUserId);
+      const result = await unmuteUser(roomId, targetUserId);
 
-      io?.to(`user:${targetUserId}`).emit("member-force-unmuted", {
-        roomId,
-        userId: targetUserId,
-        forceMuted: false,
-      });
+      io?.to(`user:${targetUserId}`).emit("member-force-unmuted", result);
 
-      io?.to(roomId).emit("member-force-mute-status", {
-        userId: targetUserId,
-        forceMuted: false,
-      });
+      io?.to(roomId).emit("member-force-mute-status", result);
     });
 
     socket.on("moderator-set-mute-all", async ({ roomId, muteAll }) => {
@@ -203,11 +174,7 @@ export const initializeSocket = (server: HttpServer) => {
 
         if (!room) return;
 
-        if (muteAll) {
-          await redis.set(`room:${roomId}:mute-all`, "1");
-        } else {
-          await redis.del(`room:${roomId}:mute-all`);
-        }
+        await setMuteAll(roomId, muteAll);
 
         const muteAllExcludedUsers = muteAll ? [room.hostId] : [];
 
@@ -244,15 +211,7 @@ export const initializeSocket = (server: HttpServer) => {
           return;
         }
 
-        await redis.call(
-          "JSON.SET",
-          `room:${roomId}`,
-          "$.status",
-          JSON.stringify("ended"),
-        );
-
-        await redis.del(`room:${roomId}:force-muted`);
-        await redis.del(`room:${roomId}:mute-all`);
+        await endRoom(roomId);
 
         io?.to(roomId).emit("room-ended-for-members", {
           roomId,
