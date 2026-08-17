@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { DM_Sans, Goldman } from "next/font/google";
-import StoreProvider from "@/components/StoreProvider";
+import StoreProvider from "@/components/provider/StoreProvider";
 import { Toaster } from "react-hot-toast";
 import { AuthChecker } from "@/components/AuthChecker";
-import { SocketProvider } from "@/context/SocketContext";
 import { AudioProvider } from "@/context/AudioContext";
+import SocketInitializer from "@/components/provider/SocketInitializer";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -34,11 +34,10 @@ export default function RootLayout({
       <body className={` ${dmSans.variable} ${goldman.variable} antialiased`}>
         <StoreProvider>
           <AuthChecker>
-            <SocketProvider>
-              <AudioProvider>
-                {children}
-              </AudioProvider>
-            </SocketProvider>
+            <SocketInitializer />
+            <AudioProvider>
+              {children}
+            </AudioProvider>
           </AuthChecker>
         </StoreProvider>
         <Toaster position="top-right" reverseOrder={false} />

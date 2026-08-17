@@ -3,3 +3,4 @@ export * from "./create";
 export * from "./addMember";
 export * from "./findOne";
 export * from "./removeMember";
+export * from "./endRoom";

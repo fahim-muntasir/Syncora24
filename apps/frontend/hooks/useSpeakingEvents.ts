@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useSocket } from "@/context/SocketContext";
+import { socketManager } from "@/libs/socket/index";
 import { useAppDispatch } from "@/libs/hooks";
 import {
   setSpeakingUser,
@@ -7,7 +7,6 @@ import {
 } from "@/libs/features/room/roomSlice";
 
 export function useSpeakingEvents(roomId: string) {
-  const { on } = useSocket();
   const dispatch = useAppDispatch();
 
   useEffect(() => {
@@ -28,7 +27,7 @@ export function useSpeakingEvents(roomId: string) {
       }
     };
 
-    const unsubSpeaking = on("user-speaking", (payload: unknown) => {
+    const unsubSpeaking = socketManager.on("user-speaking", (payload: unknown) => {
       const data = payload as {
         roomId: string;
         userId: string;
@@ -42,5 +41,5 @@ export function useSpeakingEvents(roomId: string) {
     return () => {
       unsubSpeaking();
     };
-  }, [on, roomId, dispatch]);
+  }, [roomId, dispatch]);
 }

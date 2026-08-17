@@ -1,12 +1,10 @@
-import React, { useEffect } from "react";
-import { useSocket } from "@/context/SocketContext";
+import React from "react";
 import { RoomType } from "@/types/room";
 import TopBar from "./TopBar";
 import RoomGrid from "./RoomGrid";
 import ControlsBar from "./ControlsBar";
 import SidePanel from "./SidePanel";
-import { useAppDispatch, useAppSelector } from "@/libs/hooks";
-import { setUnMutedUser, removeUnMutedUser } from "@/libs/features/room/roomSlice";
+import { useAppSelector } from "@/libs/hooks";
 
 export default function RoomLayout({
   room,
@@ -21,32 +19,11 @@ export default function RoomLayout({
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (collapsed: boolean) => void;
 }) {
-  const { on } = useSocket();
-  const dispatch = useAppDispatch();
   const currentUser = useAppSelector((state) => state.auth.user);
   const { unMutedUsers, speakingUsers } = useAppSelector((state) => state.room);
-
-  // Derive host status from room data + current user
   const currentUserIsHost = Boolean(room && currentUser && room.hostId === currentUser.id);
-
-  // For this demo, moderators aren't stored in room state yet.
-  // Wire this to real data when moderator roles are implemented.
   const currentUserIsModerator = false;
-
-  // Placeholder — wire to real raise-hand state when implemented
   const raisedHandCount = 0;
-
-  useEffect(() => {
-    const unsubMuted = on("user-mute-status", (payload: unknown) => {
-      const data = payload as { roomId: string; userId: string; isUnMuted: boolean };
-      if (data.isUnMuted) {
-        dispatch(setUnMutedUser(data.userId));
-      } else {
-        dispatch(removeUnMutedUser(data.userId));
-      }
-    });
-    return () => unsubMuted();
-  }, [on, dispatch]);
 
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden">
