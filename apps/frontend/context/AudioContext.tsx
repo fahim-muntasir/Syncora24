@@ -313,8 +313,12 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
         userId: string;
         isUnMuted: boolean;
       };
-      console.log(`[Audio] ${userId} is now ${muted ? "unmuted" : "muted"}`);
-      // You can dispatch to Redux here if you track other users' mute state
+
+      if (muted) {
+        dispatch(setUnMutedUser(userId));
+      } else {
+        dispatch(removeUnMutedUser(userId));
+      }
     });
 
     return () => {
