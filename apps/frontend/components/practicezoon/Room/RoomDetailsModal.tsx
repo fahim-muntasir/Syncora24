@@ -16,7 +16,6 @@ import {
 } from "lucide-react";
 import { useAddRoomMemberMutation, useGetSingleRoomQuery, roomApiSlice } from "@/libs/features/room/roomApiSlice";
 import { useAppSelector, useAppDispatch } from "@/libs/hooks";
-import { useRoomSocket } from "@/hooks/useRoomSocket";
 import { socketManager } from "@/libs/socket/index";
 import { generateIdenticonAvatar } from "@/utils/generateAvatar";
 import { RoomType } from "@/types/room";
@@ -28,17 +27,19 @@ const levelConfig: Record<string, { bg: string; text: string; border: string; do
   Native: { bg: "bg-blue-500/10", text: "text-blue-400", border: "border-blue-500/20", dot: "bg-blue-400" },
 };
 
-// Role config for participant list
-const MOCK_MODERATOR_IDS = ["2"]; // simulate moderator
+const MOCK_MODERATOR_IDS = ["2"];
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  handleUserJoined: (data: { user: { id: string; name: string } }) => void;
-  handleUserLeft: (data: { memberId: string }) => void;
+  joinRoom: () => Promise<void>;
 }
 
-export default function RoomDetailsModal({ isOpen, onClose, handleUserJoined, handleUserLeft }: Props) {
+export default function RoomDetailsModal({ 
+  isOpen, 
+  onClose, 
+  joinRoom
+}: Props) {
   const [addRoomMember, { isLoading }] = useAddRoomMemberMutation();
   const currentUser = useAppSelector((state) => state.auth.user);
   const router = useRouter();
@@ -49,11 +50,8 @@ export default function RoomDetailsModal({ isOpen, onClose, handleUserJoined, ha
   });
 
   const roomData = roomResponse?.data;
-
   const level = levelConfig[roomData?.level as keyof typeof levelConfig] ?? levelConfig.Beginner;
-  const spotsLeft =
-    (roomData?.maxParticipants ?? 0) - (roomData?.members?.length ?? 0);
-
+  const spotsLeft = (roomData?.maxParticipants ?? 0) - (roomData?.members?.length ?? 0);
   const dispatch = useAppDispatch();
 
   useEffect(() => {
@@ -65,7 +63,6 @@ export default function RoomDetailsModal({ isOpen, onClose, handleUserJoined, ha
           newMember: RoomType["members"][number];
         };
 
-        // Only update the currently opened room
         if (data.roomId !== roomId) {
           return;
         }
@@ -75,7 +72,6 @@ export default function RoomDetailsModal({ isOpen, onClose, handleUserJoined, ha
             "getSingleRoom",
             roomId,
             (draft) => {
-              // Prevent duplicate members
               const exists = draft.data.members.some(
                 (member) => member.id === data.newMember.id
               );
@@ -105,7 +101,6 @@ export default function RoomDetailsModal({ isOpen, onClose, handleUserJoined, ha
           memberId: string;
         };
 
-        // Only update the currently opened room
         if (data.roomId !== roomId) {
           return;
         }
@@ -128,14 +123,6 @@ export default function RoomDetailsModal({ isOpen, onClose, handleUserJoined, ha
       unsubRemoved?.();
     };
   }, [dispatch, roomId]);
-
-  const { joinRoom, leaveRoom } = useRoomSocket({
-    roomId,
-    currentUserId: currentUser?.id,
-    currentUserName: currentUser?.fullName,
-    onUserJoined: handleUserJoined,
-    onUserLeft: handleUserLeft,
-  });
 
   const joinRoomHandler = async () => {
     if (!roomId) return toast.error("Room ID is missing.");
@@ -170,7 +157,6 @@ export default function RoomDetailsModal({ isOpen, onClose, handleUserJoined, ha
   };
 
   const handleBackToHome = () => {
-    leaveRoom();
     router.push("/");
   };
 
@@ -180,8 +166,6 @@ export default function RoomDetailsModal({ isOpen, onClose, handleUserJoined, ha
     <Modal>
       <div className="p-6 sm:p-8 max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
 
-        {/* ── SAFETY BANNER ─────────────────────────────────── */}
-        {/* Immediately signals: this room is governed and safe */}
         <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-emerald-500/8 border border-emerald-500/15 mb-6">
           <ShieldCheck size={15} className="text-emerald-400 flex-shrink-0" />
           <span className="text-xs text-emerald-300/80 font-medium">
@@ -192,11 +176,9 @@ export default function RoomDetailsModal({ isOpen, onClose, handleUserJoined, ha
           </span>
         </div>
 
-        {/* ── HEADER ────────────────────────────────────────── */}
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6 mb-7">
           <div className="flex-1 min-w-0">
 
-            {/* Badges row */}
             <div className="flex items-center flex-wrap gap-2 mb-4">
               <span className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border font-medium ${level.bg} ${level.text} ${level.border}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${level.dot}`} />
@@ -209,7 +191,6 @@ export default function RoomDetailsModal({ isOpen, onClose, handleUserJoined, ha
                 <Users size={12} /> {roomData?.members.length}/{roomData?.maxParticipants}
               </span>
 
-              {/* Locked indicator placeholder */}
               <span className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.07] text-gray-600">
                 <Lock size={11} /> Open
               </span>
@@ -238,7 +219,6 @@ export default function RoomDetailsModal({ isOpen, onClose, handleUserJoined, ha
             </div>
           </div>
 
-          {/* ── JOIN CTA ──────────────────────────────────────── */}
           <div className="flex flex-col gap-2 sm:items-end flex-shrink-0">
             <button
               className={`group flex items-center gap-2.5 px-6 py-3 rounded-xl font-semibold text-sm transition-all duration-200 active:scale-95 ${isLoading
@@ -257,7 +237,6 @@ export default function RoomDetailsModal({ isOpen, onClose, handleUserJoined, ha
           </div>
         </div>
 
-        {/* ── PARTICIPANTS ──────────────────────────────────── */}
         <div className="border-t border-white/[0.06] pt-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-white uppercase tracking-wider">Participants</h2>
@@ -336,7 +315,6 @@ export default function RoomDetailsModal({ isOpen, onClose, handleUserJoined, ha
           </div>
         </div>
 
-        {/* ── FOOTER ────────────────────────────────────────── */}
         <div className="border-t border-white/[0.06] pt-5 flex items-center justify-between gap-4">
           <button
             onClick={handleBackToHome}

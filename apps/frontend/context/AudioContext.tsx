@@ -1,5 +1,5 @@
-// context/AudioContext.tsx
 "use client";
+
 import React, {
   createContext,
   useContext,
@@ -16,14 +16,17 @@ import {
   removeSpeakingUser,
   clearForceMutedUsers,
   clearUnMutedUsers,
+  setUnMutedUser,
+  removeUnMutedUser,
+  setForceMutedUser,
+  removeForceMutedUser,
+  setVolumeLevel,
 } from "@/libs/features/room/roomSlice";
-import { setUnMutedUser, removeUnMutedUser, setForceMutedUser, removeForceMutedUser } from "@/libs/features/room/roomSlice";
 import toast from "react-hot-toast";
 import { socketManager } from "@/libs/socket/index";
 
 type AudioContextType = {
   localStreamRef: React.MutableRefObject<MediaStream | null>;
-  /** Increments every time localStreamRef.current changes — use this in effects */
   streamVersion: number;
   isMuted: boolean;
   isAudioEnabled: boolean;
@@ -36,15 +39,32 @@ type AudioContextType = {
 
 const AudioCtx = createContext<AudioContextType | undefined>(undefined);
 
+const SPEAKING_CONFIG = {
+  VOICE_BAND_START: 2,
+  VOICE_BAND_END: 30,
+  SPEAKING_THRESHOLD: 12,
+  SPEAKING_STOP_DELAY: 800,
+  FFT_SIZE: 512,
+  SMOOTHING: 0.85,
+  MIN_DECIBELS: -100,
+  MAX_DECIBELS: -30,
+};
+
+const localVolumeMonitorRef = {
+  analyser: null as AnalyserNode | null,
+  frame: null as number | null,
+  audioContext: null as AudioContext | null,
+  source: null as MediaStreamAudioSourceNode | null,
+};
+
 export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const localStreamRef = useRef<MediaStream | null>(null);
-  // ↑ This is the key fix: a numeric version that increments whenever
-  //   localStreamRef.current changes, so useEffect deps can react to it.
   const [streamVersion, setStreamVersion] = useState(0);
 
   const nativeAudioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const stopTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const wasSpeakingRef = useRef(false);
@@ -55,39 +75,28 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
   const isMuted = useAppSelector((s) => s.room.isMuted);
   const muteAllExcludedUsers = useAppSelector((s) => s.room.muteAllExcludedUsers);
   const [isAudioEnabled, setIsAudioEnabled] = useState(false);
-
   const currentUserId = useAppSelector((state) => state.auth.user?.id ?? "");
 
-  const muteAll = useAppSelector(
-    (state) => state.room.muteAll
-  );
-  const forceMutedUsers = useAppSelector(
-    (state) => state.room.forceMutedUsers
-  );
-
-  // const isForceMuted = currentUserId
-  //   ? forceMutedUsers.includes(currentUserId)
-  //   : false;
+  const muteAll = useAppSelector((state) => state.room.muteAll);
+  const forceMutedUsers = useAppSelector((state) => state.room.forceMutedUsers);
 
   const isForceMuted =
     forceMutedUsers.includes(currentUserId) ||
-    (
-      muteAll &&
-      !muteAllExcludedUsers.includes(currentUserId)
-    );
+    (muteAll && !muteAllExcludedUsers.includes(currentUserId));
 
-
-  /** Safely get-or-create a running AudioContext */
   const getAudioContext = useCallback(async (): Promise<AudioContext> => {
-    if (!nativeAudioCtxRef.current || nativeAudioCtxRef.current.state === "closed") {
+    if (
+      !nativeAudioCtxRef.current ||
+      nativeAudioCtxRef.current.state === "closed"
+    ) {
       nativeAudioCtxRef.current = new (window.AudioContext ||
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (window as any).webkitAudioContext)();
     }
-    // Browsers suspend AudioContext until a user gesture — resume it
+
     if (nativeAudioCtxRef.current.state === "suspended") {
       await nativeAudioCtxRef.current.resume();
     }
+
     return nativeAudioCtxRef.current;
   }, []);
 
@@ -100,23 +109,138 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
       clearTimeout(stopTimeoutRef.current);
       stopTimeoutRef.current = null;
     }
+    analyserRef.current = null;
   }, []);
 
-  // ── Speaking detection ──────────────────────────────────────────────────────
-  const initializeAudioDetection = useCallback(
-    async (stream: MediaStream, userId: string, roomId: string) => {
-      stopDetectionLoop(); // cancel any existing loop first
+  const startLocalVolumeMonitoring = useCallback(
+    async (stream: MediaStream, userId: string) => {
+      // Stop existing monitoring
+      if (localVolumeMonitorRef.frame !== null) {
+        cancelAnimationFrame(localVolumeMonitorRef.frame);
+        localVolumeMonitorRef.frame = null;
+      }
+      if (
+        localVolumeMonitorRef.source &&
+        localVolumeMonitorRef.analyser
+      ) {
+        try {
+          localVolumeMonitorRef.source.disconnect();
+        } catch (e) {
+          
+        }
+      }
+      if (localVolumeMonitorRef.audioContext?.state !== "closed") {
+        try {
+          localVolumeMonitorRef.audioContext?.close();
+        } catch (e) {
+          
+        }
+      }
 
       try {
         const ctx = await getAudioContext();
         const analyser = ctx.createAnalyser();
-        analyser.fftSize = 512;
-        analyser.smoothingTimeConstant = 0.85;
-        analyser.minDecibels = -85;
-        analyser.maxDecibels = -10;
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.8;
 
         const source = ctx.createMediaStreamSource(stream);
         source.connect(analyser);
+
+        localVolumeMonitorRef.analyser = analyser;
+        localVolumeMonitorRef.audioContext = ctx;
+        localVolumeMonitorRef.source = source;
+
+        const data = new Uint8Array(analyser.fftSize);
+        let lastUpdate = 0;
+
+        const updateVolume = (timestamp: number) => {
+          if (!localVolumeMonitorRef.analyser) return;
+
+          try {
+            localVolumeMonitorRef.analyser.getByteTimeDomainData(data);
+
+            let sum = 0;
+            for (let i = 0; i < data.length; i++) {
+              const normalized = (data[i] - 128) / 128;
+              sum += normalized * normalized;
+            }
+
+            const rms = Math.sqrt(sum / data.length);
+            let volume = Math.min(1, rms * 4);
+
+            if (volume < 0.01) {
+              volume = 0;
+            }
+
+            if (timestamp - lastUpdate >= 50) {
+              dispatch(setVolumeLevel({ userId, volume }));
+              lastUpdate = timestamp;
+            }
+          } catch (err) {
+            console.error("[AudioContext] Local volume error:", err);
+          }
+
+          const frame = requestAnimationFrame(updateVolume);
+          localVolumeMonitorRef.frame = frame;
+        };
+
+        requestAnimationFrame(updateVolume);
+        console.log("[AudioContext] Local volume monitoring started");
+      } catch (err) {
+        console.error("[AudioContext] Local volume monitoring failed:", err);
+      }
+    },
+    [dispatch, getAudioContext]
+  );
+
+  const stopLocalVolumeMonitoring = useCallback(() => {
+    if (localVolumeMonitorRef.frame !== null) {
+      cancelAnimationFrame(localVolumeMonitorRef.frame);
+      localVolumeMonitorRef.frame = null;
+    }
+    if (localVolumeMonitorRef.source) {
+      try {
+        localVolumeMonitorRef.source.disconnect();
+      } catch (e) {
+        
+      }
+      localVolumeMonitorRef.source = null;
+    }
+    if (localVolumeMonitorRef.analyser) {
+      try {
+        localVolumeMonitorRef.analyser.disconnect();
+      } catch (e) {
+        
+      }
+      localVolumeMonitorRef.analyser = null;
+    }
+    if (localVolumeMonitorRef.audioContext?.state !== "closed") {
+      try {
+        localVolumeMonitorRef.audioContext?.close();
+      } catch (e) {
+        
+      }
+      localVolumeMonitorRef.audioContext = null;
+    }
+  }, []);
+
+  const initializeAudioDetection = useCallback(
+    async (stream: MediaStream, userId: string, roomId: string) => {
+      stopDetectionLoop();
+
+      try {
+        const ctx = await getAudioContext();
+        const analyser = ctx.createAnalyser();
+
+        analyser.fftSize = SPEAKING_CONFIG.FFT_SIZE;
+        analyser.smoothingTimeConstant = SPEAKING_CONFIG.SMOOTHING;
+        analyser.minDecibels = SPEAKING_CONFIG.MIN_DECIBELS;
+        analyser.maxDecibels = SPEAKING_CONFIG.MAX_DECIBELS;
+
+        const source = ctx.createMediaStreamSource(stream);
+        source.connect(analyser);
+
+        analyserRef.current = analyser;
 
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
@@ -126,10 +250,14 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
 
           if (enabled) {
             analyser.getByteFrequencyData(dataArray);
-            // Focus on voice frequencies (85–255 Hz band roughly maps to lower bins)
-            const voiceBins = dataArray.slice(2, 30);
-            const volume = voiceBins.reduce((a, b) => a + b, 0) / voiceBins.length;
-            const speaking = volume > 20;
+
+            const voiceBins = dataArray.slice(
+              SPEAKING_CONFIG.VOICE_BAND_START,
+              SPEAKING_CONFIG.VOICE_BAND_END,
+            );
+
+            const energy = voiceBins.reduce((a, b) => a + b, 0) / voiceBins.length;
+            const speaking = energy > SPEAKING_CONFIG.SPEAKING_THRESHOLD;
 
             if (speaking && !wasSpeakingRef.current) {
               if (stopTimeoutRef.current) {
@@ -138,24 +266,36 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
               }
               wasSpeakingRef.current = true;
               dispatch(setSpeakingUser(userId));
-              socketManager.emit("user-speaking", { roomId, userId, speaking: true });
-            } else if (!speaking && wasSpeakingRef.current && !stopTimeoutRef.current) {
+              socketManager.emit("user-speaking", {
+                roomId,
+                userId,
+                speaking: true,
+              });
+            } else if (
+              !speaking &&
+              wasSpeakingRef.current &&
+              !stopTimeoutRef.current
+            ) {
               stopTimeoutRef.current = setTimeout(() => {
                 wasSpeakingRef.current = false;
                 stopTimeoutRef.current = null;
                 dispatch(removeSpeakingUser(userId));
-                socketManager.emit("user-speaking", { roomId, userId, speaking: false });
-              }, 600);
+
+                socketManager.emit("user-speaking", { roomId, userId, speaking: false});
+              }, SPEAKING_CONFIG.SPEAKING_STOP_DELAY);
             }
           } else if (wasSpeakingRef.current) {
-            // Muted — immediately stop speaking indicator
             wasSpeakingRef.current = false;
             if (stopTimeoutRef.current) {
               clearTimeout(stopTimeoutRef.current);
               stopTimeoutRef.current = null;
             }
             dispatch(removeSpeakingUser(userId));
-            socketManager.emit("user-speaking", { roomId, userId, speaking: false });
+            socketManager.emit("user-speaking", {
+              roomId,
+              userId,
+              speaking: false,
+            });
           }
 
           animationFrameRef.current = requestAnimationFrame(detect);
@@ -166,147 +306,182 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
         console.error("[AudioContext] Failed to initialize audio detection:", err);
       }
     },
-    [dispatch, getAudioContext, stopDetectionLoop]
+    [dispatch, getAudioContext, stopDetectionLoop],
   );
 
-  // ── Microphone access ───────────────────────────────────────────────────────
-  const requestMicrophoneAccess = useCallback(async (): Promise<MediaStream | null> => {
-    try {
-      // Stop any existing stream tracks before requesting new ones
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach((t) => t.stop());
-        localStreamRef.current = null;
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          // latency: 0,
-          channelCount: 1,
-          sampleRate: 48000,
-        },
-        video: false,
-      });
-
-      const track = stream.getAudioTracks()[0];
-      if (track) track.enabled = true;
-
-      localStreamRef.current = stream;
-      // Signal React that the stream changed
-      setStreamVersion((v) => v + 1);
-
-      await initializeAudioDetection(
-        stream,
-        currentUserIdRef.current,
-        currentRoomIdRef.current
-      );
-
-      return stream;
-    } catch (err) {
-      if (err instanceof DOMException) {
-        const messages: Record<string, string> = {
-          NotFoundError: "No microphone found. Please connect a microphone.",
-          NotAllowedError: "Microphone access denied. Please allow it in browser settings.",
-          NotReadableError: "Microphone is already in use by another application.",
-        };
-        toast.error(messages[err.name] ?? "Failed to access microphone.");
-      } else {
-        toast.error("Failed to access microphone.");
-      }
-      throw err;
-    }
-  }, [initializeAudioDetection]);
-
-  // ── Public API ──────────────────────────────────────────────────────────────
-
-  const startAudio = useCallback(async (
-    userId: string,
-    roomId: string
-  ): Promise<MediaStream | null> => {
-    currentRoomIdRef.current = roomId;
-    currentUserIdRef.current = userId;
-    setIsAudioEnabled(true);
-    dispatch(setAudioEnabled(true));
-    dispatch(setMuted(true));
-    toast.success("Joined room — mic muted by default");
-    return null;
-  }, [dispatch]);
-
-  const stopAudio = useCallback((userId: string) => {
-    stopDetectionLoop();
-
-    localStreamRef.current?.getTracks().forEach((t) => t.stop());
-    localStreamRef.current = null;
-    setStreamVersion((v) => v + 1);
-
-    if (nativeAudioCtxRef.current?.state !== "closed") {
-      nativeAudioCtxRef.current?.close();
-    }
-    nativeAudioCtxRef.current = null;
-
-    wasSpeakingRef.current = false;
-    currentRoomIdRef.current = "";
-    currentUserIdRef.current = "";
-
-    setIsAudioEnabled(false);
-    dispatch(setAudioEnabled(false));
-    dispatch(removeSpeakingUser(userId));
-  }, [dispatch, stopDetectionLoop]);
-
-  const toggleMute = useCallback(async (roomId: string, userId: string) => {
-    if (isForceMuted) {
-      toast.error(
-        "You have been muted by a moderator."
-      );
-
-      return;
-    }
-
-    if (isMuted) {
-      // ── Unmuting ────────────────────────────────────────────────────────────
-      if (!localStreamRef.current) {
-        // First unmute — request microphone
-        try {
-          const stream = await requestMicrophoneAccess();
-          if (!stream) return;
-          dispatch(setMuted(false));
-          socketManager.emit("user-mute-status", { roomId, userId, isUnMuted: true });
-          toast.success("Microphone on");
-          dispatch(setUnMutedUser(userId));
-        } catch {
-          dispatch(setMuted(true));
+  const requestMicrophoneAccess = useCallback(
+    async (): Promise<MediaStream | null> => {
+      try {
+        if (localStreamRef.current) {
+          localStreamRef.current.getTracks().forEach((t) => t.stop());
+          localStreamRef.current = null;
         }
-      } else {
-        // Stream exists, just re-enable track
-        const track = localStreamRef.current.getAudioTracks()[0];
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: { ideal: 1 },
+            sampleRate: { ideal: 48000 },
+            sampleSize: { ideal: 16 },
+          },
+          video: false,
+        });
+
+        const track = stream.getAudioTracks()[0];
         if (track) {
           track.enabled = true;
-          dispatch(setMuted(false));
-          socketManager.emit("user-mute-status", { roomId, userId, isUnMuted: true });
-          // Resume AudioContext if needed (browser may have suspended it)
-          await getAudioContext();
-          toast.success("Microphone on");
-          dispatch(setUnMutedUser(userId));
+
+          const settings = track.getSettings();
+          console.log("[AudioContext] Audio track settings:", {
+            sampleRate: settings.sampleRate,
+            channelCount: settings.channelCount,
+            echoCancellation: settings.echoCancellation,
+            noiseSuppression: settings.noiseSuppression,
+            autoGainControl: settings.autoGainControl,
+          });
+        }
+
+        localStreamRef.current = stream;
+        setStreamVersion((v) => v + 1);
+
+        await initializeAudioDetection(
+          stream,
+          currentUserIdRef.current,
+          currentRoomIdRef.current,
+        );
+
+        await startLocalVolumeMonitoring(stream, currentUserIdRef.current);
+
+        return stream;
+      } catch (err) {
+        if (err instanceof DOMException) {
+          const messages: Record<string, string> = {
+            NotFoundError:
+              "No microphone found. Please connect a microphone.",
+            NotAllowedError:
+              "Microphone access denied. Please allow it in browser settings.",
+            NotReadableError:
+              "Microphone is already in use by another application.",
+          };
+          toast.error(messages[err.name] ?? "Failed to access microphone.");
+        } else {
+          toast.error("Failed to access microphone.");
+        }
+        throw err;
+      }
+    },
+    [initializeAudioDetection, startLocalVolumeMonitoring],
+  );
+
+  const startAudio = useCallback(
+    async (userId: string, roomId: string): Promise<MediaStream | null> => {
+      currentRoomIdRef.current = roomId;
+      currentUserIdRef.current = userId;
+      setIsAudioEnabled(true);
+      dispatch(setAudioEnabled(true));
+      dispatch(setMuted(true));
+      toast.success("Joined room — mic muted by default");
+      return null;
+    },
+    [dispatch],
+  );
+
+  const stopAudio = useCallback(
+    (userId: string) => {
+      stopLocalVolumeMonitoring();
+
+      stopDetectionLoop();
+
+      localStreamRef.current?.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+      setStreamVersion((v) => v + 1);
+
+      if (nativeAudioCtxRef.current?.state !== "closed") {
+        nativeAudioCtxRef.current?.close();
+      }
+      nativeAudioCtxRef.current = null;
+
+      wasSpeakingRef.current = false;
+      currentRoomIdRef.current = "";
+      currentUserIdRef.current = "";
+
+      setIsAudioEnabled(false);
+      dispatch(setAudioEnabled(false));
+      dispatch(removeSpeakingUser(userId));
+    },
+    [dispatch, stopDetectionLoop, stopLocalVolumeMonitoring],
+  );
+
+  const toggleMute = useCallback(
+    async (roomId: string, userId: string) => {
+      if (isForceMuted) {
+        toast.error("You have been muted by a moderator.");
+        return;
+      }
+
+      if (isMuted) {
+        if (!localStreamRef.current) {
+          try {
+            const stream = await requestMicrophoneAccess();
+            if (!stream) return;
+            dispatch(setMuted(false));
+            socketManager.emit("user-mute-status", {
+              roomId,
+              userId,
+              isUnMuted: true,
+            });
+            toast.success("Microphone on");
+            dispatch(setUnMutedUser(userId));
+          } catch {
+            dispatch(setMuted(true));
+          }
+        } else {
+          const track = localStreamRef.current.getAudioTracks()[0];
+          if (track) {
+            track.enabled = true;
+            dispatch(setMuted(false));
+            socketManager.emit("user-mute-status", {
+              roomId,
+              userId,
+              isUnMuted: true,
+            });
+            await getAudioContext();
+            toast.success("Microphone on");
+            dispatch(setUnMutedUser(userId));
+          }
+        }
+      } else {
+        const track = localStreamRef.current?.getAudioTracks()[0];
+        if (track) {
+          track.enabled = false;
+          dispatch(setMuted(true));
+          socketManager.emit("user-mute-status", {
+            roomId,
+            userId,
+            isUnMuted: false,
+          });
+          dispatch(removeSpeakingUser(userId));
+          socketManager.emit("user-speaking", {
+            roomId,
+            userId,
+            speaking: false,
+          });
+          toast.success("Microphone muted");
+          dispatch(removeUnMutedUser(userId));
         }
       }
-    } else {
-      // ── Muting ──────────────────────────────────────────────────────────────
-      const track = localStreamRef.current?.getAudioTracks()[0];
-      if (track) {
-        track.enabled = false;
-        dispatch(setMuted(true));
-        socketManager.emit("user-mute-status", { roomId, userId, isUnMuted: false });
-        dispatch(removeSpeakingUser(userId));
-        socketManager.emit("user-speaking", { roomId, userId, speaking: false });
-        toast.success("Microphone muted");
-        dispatch(removeUnMutedUser(userId));
-      }
-    }
-  }, [isForceMuted, isMuted, dispatch, requestMicrophoneAccess, getAudioContext]);
+    },
+    [
+      isForceMuted,
+      isMuted,
+      dispatch,
+      requestMicrophoneAccess,
+      getAudioContext,
+    ],
+  );
 
-  // ── Listen for other users' mute status ────────────────────────────────────
   useEffect(() => {
     const unsub = socketManager.on("user-mute-status", (payload: unknown) => {
       const { userId, isUnMuted: muted } = payload as {
@@ -328,22 +503,12 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
         nativeAudioCtxRef.current?.close();
       }
     };
-  }, [stopDetectionLoop]);
+  }, [dispatch, stopDetectionLoop]);
 
   useEffect(() => {
-    if (!currentUserId) return;
+    if (!currentUserId || !isForceMuted) return;
 
-    // const isForceMuted =
-    //   muteAll ||
-    //   forceMutedUsers.includes(currentUserId);
-
-    if (!isForceMuted) {
-      return;
-    }
-
-    const track =
-      localStreamRef.current?.getAudioTracks()[0];
-
+    const track = localStreamRef.current?.getAudioTracks()[0];
     if (track) {
       track.enabled = false;
     }
@@ -351,44 +516,23 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
     dispatch(setMuted(true));
     dispatch(removeUnMutedUser(currentUserId));
     dispatch(removeSpeakingUser(currentUserId));
-
-  }, [
-    muteAll,
-    forceMutedUsers,
-    currentUserId,
-    dispatch,
-  ]);
+  }, [muteAll, forceMutedUsers, currentUserId, dispatch]);
 
   useEffect(() => {
     const unsubscribe = socketManager.on(
       "member-force-muted",
       (payload: unknown) => {
-
-        const {
-          roomId,
-          userId,
-          forceMuted,
-        } = payload as {
+        const { roomId, userId, forceMuted } = payload as {
           roomId: string;
           userId: string;
           forceMuted: boolean;
         };
 
-        if (roomId !== currentRoomIdRef.current) {
-          return;
-        }
+        if (roomId !== currentRoomIdRef.current) return;
+        if (userId !== currentUserIdRef.current) return;
+        if (!forceMuted) return;
 
-        if (userId !== currentUserIdRef.current) {
-          return;
-        }
-
-        if (!forceMuted) {
-          return;
-        }
-
-        const track =
-          localStreamRef.current?.getAudioTracks()[0];
-
+        const track = localStreamRef.current?.getAudioTracks()[0];
         if (track) {
           track.enabled = false;
         }
@@ -404,10 +548,8 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
           speaking: false,
         });
 
-        toast.error(
-          "You have been muted by a moderator."
-        );
-      }
+        toast.error("You have been muted by a moderator.");
+      },
     );
 
     return () => {
@@ -419,28 +561,17 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
     const unsubscribe = socketManager.on(
       "member-force-unmuted",
       (payload: unknown) => {
-        const {
-          roomId,
-          userId,
-        } = payload as {
+        const { roomId, userId } = payload as {
           roomId: string;
           userId: string;
         };
 
-        if (roomId !== currentRoomIdRef.current) {
-          return;
-        }
-
-        if (userId !== currentUserIdRef.current) {
-          return;
-        }
+        if (roomId !== currentRoomIdRef.current) return;
+        if (userId !== currentUserIdRef.current) return;
 
         dispatch(removeForceMutedUser(userId));
-
-        toast.success(
-          "You can now unmute your microphone."
-        );
-      }
+        toast.success("You can now unmute your microphone.");
+      },
     );
 
     return () => {
@@ -448,27 +579,18 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, [dispatch]);
 
-  const forceMuteUser = (
-    roomId: string,
-    targetUserId: string
-  ) => {
+  const forceMuteUser = (roomId: string, targetUserId: string) => {
     socketManager.emit("moderator-mute-user", {
       roomId,
       targetUserId,
     });
   };
 
-  const forceUnmuteUser = (
-    roomId: string,
-    targetUserId: string
-  ) => {
-    socketManager.emit(
-      "moderator-unmute-user",
-      {
-        roomId,
-        targetUserId,
-      }
-    );
+  const forceUnmuteUser = (roomId: string, targetUserId: string) => {
+    socketManager.emit("moderator-unmute-user", {
+      roomId,
+      targetUserId,
+    });
   };
 
   useEffect(() => {
@@ -479,27 +601,25 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
           roomId: string;
         };
 
-        if (eventRoomId !== currentRoomIdRef.current) {
-          return;
-        }
+        if (eventRoomId !== currentRoomIdRef.current) return;
 
-        // stop media
+        stopLocalVolumeMonitoring();
         stopDetectionLoop();
         if (localStreamRef.current) {
           localStreamRef.current.getTracks().forEach((t) => t.stop());
           localStreamRef.current = null;
           setStreamVersion((v) => v + 1);
         }
-        // reset redux
+
         dispatch(setAudioEnabled(false));
         dispatch(setMuted(true));
         dispatch(clearUnMutedUsers());
         dispatch(clearForceMutedUsers());
-      }
+      },
     );
 
     return unsubscribe;
-  }, []);
+  }, [dispatch, stopDetectionLoop, stopLocalVolumeMonitoring]);
 
   return (
     <AudioCtx.Provider

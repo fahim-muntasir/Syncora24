@@ -2,7 +2,12 @@ import { Server } from "socket.io";
 import { Server as HttpServer } from "http";
 import { canModerateRoom } from "../utils/canModarateRoom";
 import { removeMember, findSingleItem, endRoom } from "../lib/room";
-import { muteUser, unmuteUser, setMuteAll, getRoomModerationState } from "../lib/moderation";
+import {
+  muteUser,
+  unmuteUser,
+  setMuteAll,
+  getRoomModerationState,
+} from "../lib/moderation";
 
 let io: Server | null = null;
 
@@ -17,22 +22,40 @@ export const initializeSocket = (server: HttpServer) => {
     console.log("A user connected:", socket.id);
 
     socket.on("join-room", async ({ roomId, user }) => {
+      const existingSockets = await io?.in(roomId).fetchSockets();
+
+      const existingUsers = (existingSockets ?? [])
+        .filter((existingSocket) => existingSocket.id !== socket.id)
+        .map((existingSocket) => ({
+          user: {
+            id: existingSocket.data.userId,
+            name: existingSocket.data.userName,
+          },
+          socketId: existingSocket.id,
+        }))
+        .filter((item) => item.user.id);
+
+      // Join the room
       socket.join(roomId);
       socket.join(`user:${user.id}`);
 
       socket.data.roomId = roomId;
       socket.data.userId = user.id;
+      socket.data.userName = user.name;
       socket.data.socketId = socket.id;
 
-      const moderationState = await getRoomModerationState(roomId)
+      const moderationState = await getRoomModerationState(roomId);
 
-      // Tell the joining user the current persistent moderation state
       socket.emit("room-force-muted-state", {
         roomId,
         ...moderationState,
       });
 
-      // Tell everyone that a new user joined
+      socket.emit("room-participants", {
+        roomId,
+        participants: existingUsers,
+      });
+
       socket.to(roomId).emit("user-joined", {
         roomId,
         user,
@@ -53,7 +76,7 @@ export const initializeSocket = (server: HttpServer) => {
       io?.to(to).emit("ice-candidate", { from: socket.id, candidate });
     });
 
-    // 🗣 Handle user speaking status
+    // Handle user speaking status
     socket.on("user-speaking", ({ roomId, userId, speaking }) => {
       console.log(`🎙 ${userId} ${speaking ? "started" : "stopped"} speaking`);
 

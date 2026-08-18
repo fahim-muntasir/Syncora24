@@ -3,13 +3,23 @@ import { RoomMember } from "@/types/room";
 import Image from "next/image";
 import { useParams } from "next/navigation";
 import {
-  Pin, Volume2, Crown, MicOff, Mic, ShieldCheck,
-  UserX, Flag, UserMinus, ShieldPlus, MoreHorizontal,
+  Pin,
+  Volume2,
+  Crown,
+  MicOff,
+  Mic,
+  ShieldCheck,
+  UserX,
+  Flag,
+  UserMinus,
+  ShieldPlus,
+  MoreHorizontal,
 } from "lucide-react";
 import { generateIdenticonAvatar } from "@/utils/generateAvatar";
 import { useAudio } from "@/context/AudioContext";
-import { useAppDispatch } from "@/libs/hooks";
+import { useAppDispatch, useAppSelector } from "@/libs/hooks";
 import { removeUnMutedUser } from "@/libs/features/room/roomSlice";
+import VolumeIndicator from "./VolumeIndicator";
 
 const MOCK_MODERATOR_IDS = ["2"];
 
@@ -39,6 +49,8 @@ export default function RoomParticipant({
   muteAll = false,
   muteAllExcludedUsers = [],
 }: RoomParticipantProps) {
+  const volume = useAppSelector((state) => state.room.volumeLevels[member.id] ?? 0);
+
   const avatarSvg = member.avatar || generateIdenticonAvatar(member.name, 60);
 
   const { id } = useParams();
@@ -47,32 +59,19 @@ export default function RoomParticipant({
   const isSpeaking = speakingUsers.includes(member.id);
   const isForceMuted =
     forceMutedUsers.includes(member.id) ||
-    (
-      muteAll &&
-      !muteAllExcludedUsers.includes(member.id)
-    );
+    (muteAll && !muteAllExcludedUsers.includes(member.id));
 
-  const isUnMuted =
-    unMutedUsers.includes(member.id) &&
-    !isForceMuted;
+  const isUnMuted = unMutedUsers.includes(member.id) && !isForceMuted;
 
   const isHost = member.id === hostId;
   const isModerator = MOCK_MODERATOR_IDS.includes(member.id);
 
   const dispatch = useAppDispatch();
 
-  const {
-    forceMuteUser,
-    forceUnmuteUser,
-  } = useAudio();
+  const { forceMuteUser, forceUnmuteUser } = useAudio();
 
-  const canModerate =
-    (currentUserIsHost || currentUserIsModerator) &&
-    !isHost;
-
-  const canHostOnly =
-    currentUserIsHost &&
-    !isHost;
+  const canModerate = (currentUserIsHost || currentUserIsModerator) && !isHost;
+  const canHostOnly = currentUserIsHost && !isHost;
 
   const forceMuteHandler = () => {
     if (isForceMuted) {
@@ -85,7 +84,6 @@ export default function RoomParticipant({
     }
   };
 
-  // Role-specific ring / border accent
   const roleBorderClass = isHost
     ? "ring-amber-500/40"
     : isModerator
@@ -100,186 +98,179 @@ export default function RoomParticipant({
 
   return (
     <div
-      className={`relative rounded-2xl overflow-hidden group transition-all duration-300 ${isLarge ? "aspect-[16/9]" : "aspect-video"
-        } ${isSpeaking
-          ? `ring-2 ring-green-400 ring-offset-2 ring-offset-[#0e0e0e] shadow-lg shadow-green-500/20`
-          : roleBorderClass
-            ? `ring-1 ${roleBorderClass}`
-            : "ring-1 ring-white/[0.06]"
-        }`}
-      style={{ background: "rgba(22, 22, 22, 0.9)" }}
+      className={`
+        relative rounded-2xl overflow-hidden group transition-all duration-300
+        ${isLarge ? "aspect-[16/9]" : "aspect-video"}
+        ${roleBorderClass ? `ring-1 ${roleBorderClass}` : "ring-1 ring-white/[0.06]"}
+      `}
+      style={{
+        background: "linear-gradient(135deg, rgba(22, 22, 22, 0.95) 0%, rgba(28, 28, 28, 0.95) 100%)",
+      }}
     >
       {/* Subtle dot-grid texture */}
       <div
-        className="absolute inset-0 opacity-[0.03] pointer-events-none"
+        className="absolute inset-0 opacity-[0.02] pointer-events-none"
         style={{
           backgroundImage: `radial-gradient(circle, #ffffff 1px, transparent 1px)`,
           backgroundSize: "24px 24px",
         }}
       />
 
-      {/* ── AVATAR ──────────────────────────────────── */}
       <div className="absolute inset-0 flex items-center justify-center">
         {member.avatar ? (
-          <div className="relative">
-            {/* Layered speaking ring */}
-            {isSpeaking && (
-              <>
-                <div className="absolute inset-[-8px] rounded-full animate-ping opacity-20 bg-green-400" />
-                <div className="absolute inset-[-4px] rounded-full animate-pulse opacity-30 bg-green-400" />
-              </>
-            )}
+          <div className={` relative rounded-full ${isSpeaking && isUnMuted ? "ring-2 ring-emerald-400/70" : ""}`} >
             <Image
               src={member.avatar}
               alt={member.name}
               width={150}
               height={150}
-              className={`rounded-full object-cover border-2 transition-all duration-300 ${isLarge ? "w-28 h-28 sm:w-32 sm:h-32 lg:w-36 lg:h-36" : "w-16 h-16 sm:w-20 sm:h-20"
-                } ${isSpeaking ? "border-green-400/60" : avatarBorderClass}`}
+              className={`
+                rounded-full object-cover border-2
+                ${isLarge
+                  ? "w-28 h-28 sm:w-32 sm:h-32 lg:w-36 lg:h-36"
+                  : "w-16 h-16 sm:w-20 sm:h-20"
+                }
+                ${avatarBorderClass}
+              `}
             />
           </div>
         ) : (
-          <div className="relative">
-            {isSpeaking && (
-              <>
-                <div className="absolute inset-[-8px] rounded-full animate-ping opacity-20 bg-green-400" />
-                <div className="absolute inset-[-4px] rounded-full animate-pulse opacity-30 bg-green-400" />
-              </>
-            )}
-
+          <div
+            className={`relative rounded-full ${isSpeaking && isUnMuted ? "ring-2 ring-emerald-400/70" : ""}`}
+          >
             <div
               dangerouslySetInnerHTML={{ __html: avatarSvg }}
-              className={`
-                rounded-full
-                overflow-hidden
-                border-2
-                transition-all
-                duration-300
-                flex
-                items-center
-                justify-center
-                ${isLarge ? "w-28 h-28 sm:w-32 sm:h-32 lg:w-36 lg:h-36" : "w-16 h-16 sm:w-20 sm:h-20"}
-                ${isSpeaking ? "border-green-400/60" : avatarBorderClass}
-              `}
+              className={`rounded-full overflow-hidden border-2 flex items-center justify-center ${isLarge ? "w-28 h-28 sm:w-32 sm:h-32 lg:w-36 lg:h-36" : "w-16 h-16 sm:w-20 sm:h-20"} ${avatarBorderClass}`}
             />
           </div>
         )}
       </div>
 
-      {/* ── TOP LEFT: Mic status ─────────────────────── */}
-      <div className="absolute top-2.5 left-2.5 z-10">
-        <div
-          className={`p-1.5 rounded-lg transition-all duration-200 ${isUnMuted
-            ? "bg-green-500/20 border border-green-500/30"
-            : "bg-black/60 border border-white/[0.08]"
-            }`}
-        >
-          {isUnMuted ? (
-            <Mic size={13} className="text-green-400" />
-          ) : (
-            <MicOff size={13} className="text-red-400/70" />
-          )}
-        </div>
+      <div className="absolute top-3 left-3 z-10">
+        {isUnMuted ? (
+          <div className="flex items-center gap-2">
+            <Mic
+              size={14}
+              strokeWidth={2.5}
+              className="text-emerald-400"
+              aria-label="Microphone on"
+            />
+          </div>
+        ) : (
+          <MicOff
+            size={14}
+            strokeWidth={2.5}
+            className="text-red-400/70"
+            aria-label="Microphone muted"
+          />
+        )}
       </div>
 
-      {/* ── TOP RIGHT: Role badge + actions ─────────── */}
-      {/* Role badge: always visible (small), actions on hover */}
-      <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
-
-        {/* Hover-only action cluster */}
+      <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5">
         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-          {/* Pin & volume — visible to all */}
           <button
-            className="p-1.5 rounded-lg bg-black/70 border border-white/[0.10] text-gray-300 hover:text-white hover:bg-black/90 transition-all duration-150"
+            className="p-1.5 rounded-lg bg-black/50 backdrop-blur-sm border border-white/[0.12] text-gray-400 hover:text-white hover:bg-black/70 hover:border-white/20 transition-all duration-150"
             title="Pin"
           >
-            <Pin size={12} />
+            <Pin size={12} strokeWidth={2} />
           </button>
           <button
-            className="p-1.5 rounded-lg bg-black/70 border border-white/[0.10] text-gray-300 hover:text-white hover:bg-black/90 transition-all duration-150"
+            className="p-1.5 rounded-lg bg-black/50 backdrop-blur-sm border border-white/[0.12] text-gray-400 hover:text-white hover:bg-black/70 hover:border-white/20 transition-all duration-150"
             title="Adjust volume"
           >
-            <Volume2 size={12} />
+            <Volume2 size={12} strokeWidth={2} />
           </button>
 
-          {/* Moderator controls: mute, warn */}
           {canModerate && (
             <button
               type="button"
-              className={`p-1.5 rounded-lg bg-black/70 border transition-all duration-150 ${isForceMuted
-                ? "border-green-500/20 text-green-400/70 hover:text-green-400 hover:bg-green-500/10"
-                : "border-amber-500/20 text-amber-400/70 hover:text-amber-400 hover:bg-amber-500/10"
-                }`}
+              className={`
+                p-1.5 rounded-lg backdrop-blur-sm border transition-all duration-150
+                ${isForceMuted
+                  ? "bg-green-500/15 border-green-500/30 text-green-400 hover:text-green-300 hover:bg-green-500/25 hover:border-green-500/50"
+                  : "bg-amber-500/15 border-amber-500/30 text-amber-400 hover:text-amber-300 hover:bg-amber-500/25 hover:border-amber-500/50"
+                }
+              `}
               title={isForceMuted ? "Unmute member" : "Mute member"}
               onClick={forceMuteHandler}
             >
               {isForceMuted ? (
-                <MicOff size={12} />
+                <MicOff size={12} strokeWidth={2} />
               ) : (
-                <Mic size={12} />
+                <Mic size={12} strokeWidth={2} />
               )}
             </button>
           )}
 
-          {/* Host-only controls: assign mod, remove */}
           {canHostOnly && (
             <>
               <button
-                className="p-1.5 rounded-lg bg-black/70 border border-blue-500/20 text-blue-400/70 hover:text-blue-400 hover:bg-blue-500/10 transition-all duration-150"
+                className="p-1.5 rounded-lg bg-blue-500/15 backdrop-blur-sm border border-blue-500/30 text-blue-400 hover:text-blue-300 hover:bg-blue-500/25 hover:border-blue-500/50 transition-all duration-150"
                 title={isModerator ? "Remove moderator" : "Make moderator"}
               >
-                {isModerator ? <UserMinus size={12} /> : <ShieldPlus size={12} />}
+                {isModerator ? (
+                  <UserMinus size={12} strokeWidth={2} />
+                ) : (
+                  <ShieldPlus size={12} strokeWidth={2} />
+                )}
               </button>
               <button
-                className="p-1.5 rounded-lg bg-black/70 border border-red-500/20 text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-all duration-150"
+                className="p-1.5 rounded-lg bg-red-500/15 backdrop-blur-sm border border-red-500/30 text-red-400 hover:text-red-300 hover:bg-red-500/25 hover:border-red-500/50 transition-all duration-150"
                 title="Remove from room"
               >
-                <UserX size={12} />
+                <UserX size={12} strokeWidth={2} />
               </button>
             </>
           )}
 
-          {/* Member safety actions: report, block (for all non-self) */}
           {!canModerate && !canHostOnly && (
             <>
               <button
-                className="p-1.5 rounded-lg bg-black/70 border border-white/[0.10] text-gray-500 hover:text-orange-400 hover:border-orange-500/20 hover:bg-orange-500/10 transition-all duration-150"
+                className="p-1.5 rounded-lg bg-black/50 backdrop-blur-sm border border-white/[0.12] text-gray-500 hover:text-orange-400 hover:border-orange-500/30 hover:bg-orange-500/15 transition-all duration-150"
                 title="Report user"
               >
-                <Flag size={12} />
+                <Flag size={12} strokeWidth={2} />
               </button>
               <button
-                className="p-1.5 rounded-lg bg-black/70 border border-white/[0.10] text-gray-500 hover:text-gray-200 hover:bg-white/[0.08] transition-all duration-150"
+                className="p-1.5 rounded-lg bg-black/50 backdrop-blur-sm border border-white/[0.12] text-gray-500 hover:text-gray-200 hover:bg-white/[0.08] hover:border-white/20 transition-all duration-150"
                 title="More options"
               >
-                <MoreHorizontal size={12} />
+                <MoreHorizontal size={12} strokeWidth={2} />
               </button>
             </>
           )}
         </div>
       </div>
 
-      {/* ── SPEAKING BAR ────────────────────────────── */}
-      {isSpeaking && (
-        <div
-          className="absolute bottom-0 left-0 right-0 h-0.5 bg-green-400"
-          style={{ boxShadow: "0 0 8px rgba(74,222,128,0.8)" }}
-        />
-      )}
-
-      {/* ── BOTTOM NAME BAR ─────────────────────────── */}
-      <div className="absolute bottom-0 left-0 right-0 px-3 py-2.5 bg-gradient-to-t from-black/85 via-black/50 to-transparent">
+      <div className="absolute bottom-0 left-0 right-0 px-3 py-2.5">
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-white text-xs font-semibold truncate">{member.name}</span>
-            {isHost && <Crown size={11} className="text-amber-400 flex-shrink-0" />}
-            {isModerator && !isHost && <ShieldCheck size={11} className="text-blue-400 flex-shrink-0" />}
-          </div>
-        </div>
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <span className="text-white text-xs font-semibold truncate">
+              {member.name}
+            </span>
 
-        {/* Future: achievement badges strip (placeholder, single line) */}
-        <div className="hidden group-hover:flex items-center gap-1 mt-0.5 overflow-hidden">
-          <span className="text-[9px] text-gray-600 truncate">Achievements coming soon</span>
+            {isHost && (
+              <Crown
+                size={12}
+                className="text-amber-400 flex-shrink-0"
+                strokeWidth={2}
+              />
+            )}
+
+            {isModerator && !isHost && (
+              <ShieldCheck
+                size={12}
+                className="text-blue-400 flex-shrink-0"
+                strokeWidth={2}
+              />
+            )}
+
+            {isSpeaking && isUnMuted && (
+              <div className="flex-shrink-0">
+                <VolumeIndicator volume={volume} />
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

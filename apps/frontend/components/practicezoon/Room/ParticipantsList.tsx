@@ -133,10 +133,7 @@ export default function ParticipantsList({
     return (
       <div
         key={member.id}
-        className={`group flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-200 hover:bg-white/[0.04] ${isSpeaking && !isMuted
-          ? "bg-green-500/5 border border-green-500/10"
-          : ""
-          }`}
+        className="group flex items-center gap-2.5 px-3 py-2 rounded-xl transition-colors duration-200 hover:bg-white/[0.04]"
       >
 
         <div className="relative flex-shrink-0">
@@ -156,8 +153,6 @@ export default function ParticipantsList({
                 }`}
             />
           )}
-
-          <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#0e0e0e] bg-green-400" />
         </div>
 
         {/* Info */}
@@ -168,7 +163,10 @@ export default function ParticipantsList({
             </span>
 
             {isSpeaking && !isMuted && (
-              <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              <span className="flex items-center gap-1 text-[9px] font-medium text-emerald-400 flex-shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                Speaking
+              </span>
             )}
           </div>
 
