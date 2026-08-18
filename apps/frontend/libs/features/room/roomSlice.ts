@@ -8,6 +8,7 @@ interface RoomState {
   forceMutedUsers: string[];
   muteAll: boolean;
   muteAllExcludedUsers: string[];
+  volumeLevels: Record<string, number>;
 }
 
 const initialState: RoomState = {
@@ -18,6 +19,7 @@ const initialState: RoomState = {
   forceMutedUsers: [],
   muteAll: false,
   muteAllExcludedUsers: [],
+  volumeLevels: {},
 };
 
 const roomSlice = createSlice({
@@ -81,6 +83,23 @@ const roomSlice = createSlice({
     setMuteAllExcludedUsers: (state, action: PayloadAction<string[]>) => {
       state.muteAllExcludedUsers = action.payload;
     },
+    setVolumeLevel: (
+      state,
+      action: PayloadAction<{
+        userId: string;
+        volume: number;
+      }>,
+    ) => {
+      state.volumeLevels[action.payload.userId] = action.payload.volume;
+    },
+
+    removeVolumeLevel: (state, action: PayloadAction<string>) => {
+      delete state.volumeLevels[action.payload];
+    },
+
+    clearVolumeLevels: (state) => {
+      state.volumeLevels = {};
+    },
   },
 });
 
@@ -100,6 +119,9 @@ export const {
   setMuteAll,
   clearUnMutedUsersExcept,
   setMuteAllExcludedUsers,
+  setVolumeLevel,
+  removeVolumeLevel,
+  clearVolumeLevels,
 } = roomSlice.actions;
 
 export default roomSlice.reducer;

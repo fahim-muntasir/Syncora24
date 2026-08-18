@@ -10,6 +10,7 @@ import { socketManager } from "@/libs/socket/index";
 import { useAppSelector } from "@/libs/hooks";
 import { isRoomResponse } from "@/utils/typeGuardsForRoom";
 import RoomEndedModal from "@/components/practicezoon/Room/Modals/RoomEndedModal";
+import { useRoomSocket } from "@/hooks/useRoomSocket";
 
 export default function VideoConference() {
   const [room, setRoom] = useState<RoomType | null>(null);
@@ -24,6 +25,29 @@ export default function VideoConference() {
     refetchOnMountOrArgChange: true,
   });
   const currentUser = useAppSelector((state) => state.auth.user);
+
+  const handleUserJoined = ({ user }: { user: { id: string; name: string } }) => {
+    setRoom((prev) => {
+      if (!prev) return prev;
+      if (prev.members.some((m) => m.id === user.id)) return prev;
+      return { ...prev, members: [...prev.members, user] };
+    });
+  };
+
+  const handleUserLeft = ({ memberId }: { memberId: string }) => {
+    setRoom((prev) => {
+      if (!prev) return prev;
+      return { ...prev, members: prev.members.filter((m) => m.id !== memberId) };
+    });
+  };
+
+  const { joinRoom, leaveRoom } = useRoomSocket({
+    roomId,
+    currentUserId: currentUser?.id,
+    currentUserName: currentUser?.fullName,
+    onUserJoined: handleUserJoined,
+    onUserLeft: handleUserLeft,
+  });
 
   useEffect(() => {
     if (data && isSuccess && isRoomResponse(data)) setRoom(data.data);
@@ -59,36 +83,22 @@ export default function VideoConference() {
     return unsubscribe;
   }, [roomId]);
 
-  const handleUserJoined = ({ user }: { user: { id: string; name: string } }) => {
-    setRoom((prev) => {
-      if (!prev) return prev;
-      if (prev.members.some((m) => m.id === user.id)) return prev;
-      return { ...prev, members: [...prev.members, user] };
-    });
-  };
-
-  const handleUserLeft = ({ memberId }: { memberId: string }) => {
-    setRoom((prev) => {
-      if (!prev) return prev;
-      return { ...prev, members: prev.members.filter((m) => m.id !== memberId) };
-    });
-  };
-
   return (
     <div className="flex flex-col min-h-screen relative bg-[#0e0e0e] overflow-hidden">
       <BackgroundPattern />
 
-      {/* Join gate modal */}
       <RoomDetailsModal
         isOpen={isJoined}
         onClose={() => setIsJoined(true)}
-        handleUserJoined={handleUserJoined}
-        handleUserLeft={handleUserLeft}
+        joinRoom={joinRoom}
       />
 
       <RoomEndedModal
         isOpen={showRoomEndedModal}
-        onLeave={() => window.location.replace("/")}
+        onLeave={() => {
+          leaveRoom();
+          window.location.replace("/");
+        }}
       />
 
       {/* Room layout */}

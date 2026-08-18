@@ -1,5 +1,5 @@
 // hooks/useRoomSocket.ts
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { socketManager } from "@/libs/socket/index";
 import { PeerManager } from "@/libs/webrtc/PeerManager";
 import { useAudio } from "@/context/AudioContext";
@@ -10,6 +10,8 @@ import {
   setMuteAll,
   setMuteAllExcludedUsers,
   clearUnMutedUsersExcept,
+  setVolumeLevel,
+  removeVolumeLevel,
 } from "@/libs/features/room/roomSlice";
 import { useAppDispatch } from "@/libs/hooks";
 
@@ -39,19 +41,32 @@ export function useRoomSocket({
   onUserJoined,
   onUserLeft,
 }: UseRoomSocketOptions): UseRoomSocketReturn {
-  // streamVersion is the KEY fix — it's a real state value that increments
-  // whenever localStreamRef.current changes, allowing effects to fire
   const { startAudio, stopAudio, localStreamRef, streamVersion } = useAudio();
   const dispatch = useAppDispatch();
 
   const hasJoinedRef = useRef(false);
   const peerManagerRef = useRef<PeerManager | null>(null);
+  const socketToUserRef = useRef<Map<string, string>>(new Map());
 
   // ── Join ────────────────────────────────────────────────────────────────────
   const joinRoom = useCallback(async () => {
     if (!roomId || !currentUserId) return;
 
     peerManagerRef.current = new PeerManager(roomId);
+
+    peerManagerRef.current.on("volume", (socketId, _event, volume = 0) => {
+      const userId = socketToUserRef.current.get(socketId);
+
+      if (!userId) return;
+      console.log("volume from event", userId, volume);
+      dispatch(
+        setVolumeLevel({
+          userId,
+          volume,
+        }),
+      );
+    });
+
     hasJoinedRef.current = true;
 
     await startAudio(currentUserId, roomId);
@@ -82,6 +97,30 @@ export function useRoomSocket({
   useEffect(() => {
     if (!roomId) return;
 
+    const unsubParticipants = socketManager.on(
+      "room-participants",
+      (payload: unknown) => {
+        const { roomId: eventRoomId, participants } = payload as {
+          roomId: string;
+          participants: {
+            user: RoomUser;
+            socketId: string;
+          }[];
+        };
+
+        if (eventRoomId !== roomId) return;
+
+        for (const participant of participants ?? []) {
+          socketToUserRef.current.set(
+            participant.socketId,
+            participant.user.id,
+          );
+
+          console.log(`[useRoomSocket] Existing participant mapped: ${participant.user.name} (${participant.socketId})`);
+        }
+      },
+    );
+
     const unsubJoined = socketManager.on(
       "user-joined",
       async (payload: unknown) => {
@@ -89,12 +128,20 @@ export function useRoomSocket({
           user: RoomUser;
           socketId: string;
         };
+
+        socketToUserRef.current.set(socketId, user.id);
+
         console.log(`[useRoomSocket] user-joined: ${user.name} (${socketId})`);
 
-        onUserJoined?.({ user, socketId });
+        onUserJoined?.({
+          user,
+          socketId,
+        });
 
         if (!peerManagerRef.current) return;
+
         const mySocketId = socketManager.getSocket()?.id;
+
         if (socketId === mySocketId) return;
 
         const pc = peerManagerRef.current.createConnection(
@@ -106,8 +153,13 @@ export function useRoomSocket({
           offerToReceiveAudio: true,
           offerToReceiveVideo: false,
         });
+
         await pc.setLocalDescription(offer);
-        socketManager.emit("offer", { to: socketId, offer });
+
+        socketManager.emit("offer", {
+          to: socketId,
+          offer,
+        });
       },
     );
 
@@ -116,16 +168,27 @@ export function useRoomSocket({
         memberId: string;
         socketId: string;
       };
+
+      socketToUserRef.current.delete(socketId);
+
+      dispatch(removeVolumeLevel(memberId));
+
       console.log(`[useRoomSocket] user-left: ${memberId}`);
-      onUserLeft?.({ memberId, socketId });
+
+      onUserLeft?.({
+        memberId,
+        socketId,
+      });
+
       peerManagerRef.current?.closeConnection(socketId);
     });
 
     return () => {
+      unsubParticipants();
       unsubJoined();
       unsubLeft();
     };
-  }, [roomId, onUserJoined, onUserLeft, streamVersion]);
+  }, [roomId, onUserJoined, onUserLeft, dispatch, streamVersion]);
 
   // ── WebRTC signaling ────────────────────────────────────────────────────────
   useEffect(() => {

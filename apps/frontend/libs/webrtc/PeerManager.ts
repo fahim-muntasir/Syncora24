@@ -1,4 +1,3 @@
-// libs/webrtc/PeerManager.ts
 import { socketManager } from "@/libs/socket/index";
 
 const ICE_SERVERS: RTCConfiguration = {
@@ -9,14 +8,27 @@ const ICE_SERVERS: RTCConfiguration = {
   ],
 };
 
-export type PeerEventType = "track" | "connected" | "disconnected" | "failed";
-export type PeerEventHandler = (socketId: string, event?: RTCTrackEvent) => void;
+export type PeerEventType =
+  | "track"
+  | "connected"
+  | "disconnected"
+  | "failed"
+  | "volume";
+  
+export type PeerEventHandler = (
+  socketId: string,
+  event?: RTCTrackEvent,
+  volume?: number,
+) => void;
 
 export class PeerManager {
   private peers: Map<string, RTCPeerConnection> = new Map();
   private remoteAudioElements: Map<string, HTMLAudioElement> = new Map();
   private eventHandlers: Map<PeerEventType, Set<PeerEventHandler>> = new Map();
-  // Buffer ICE candidates that arrive before remote description is set
+  private audioContexts: Map<string, AudioContext> = new Map();
+  private analysers: Map<string, AnalyserNode> = new Map();
+  private volumeFrames: Map<string, number> = new Map();
+  private mediaStreamSources: Map<string, MediaStreamAudioSourceNode> = new Map();
   private iceCandidateBuffer: Map<string, RTCIceCandidateInit[]> = new Map();
 
   constructor(private readonly roomId: string) {
@@ -31,30 +43,42 @@ export class PeerManager {
     return () => this.eventHandlers.get(event)?.delete(handler);
   }
 
-  private fireEvent(event: PeerEventType, socketId: string, data?: RTCTrackEvent) {
-    this.eventHandlers.get(event)?.forEach((h) => h(socketId, data));
+  private fireEvent(
+    event: PeerEventType,
+    socketId: string,
+    data?: RTCTrackEvent,
+    volume?: number,
+  ) {
+    this.eventHandlers.get(event)?.forEach((h) => h(socketId, data, volume));
   }
 
-  createConnection(socketId: string, stream: MediaStream | null): RTCPeerConnection {
+  createConnection(
+    socketId: string,
+    stream: MediaStream | null,
+  ): RTCPeerConnection {
     if (this.peers.has(socketId)) return this.peers.get(socketId)!;
 
     const pc = new RTCPeerConnection(ICE_SERVERS);
 
-    // Add local tracks immediately if stream is available
     if (stream) {
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
     }
 
-    // Remote audio
     pc.ontrack = (event) => {
       console.log(`[PeerManager] Got remote track from ${socketId}`, event.track.kind);
       if (event.track.kind === "audio") {
-        this.attachRemoteAudio(socketId, event.streams[0]);
+        const stream = event.streams[0];
+
+        if (stream) {
+          this.attachRemoteAudio(socketId, stream);
+
+          this.startVolumeMonitoring(socketId, stream);
+        }
       }
+
       this.fireEvent("track", socketId, event);
     };
 
-    // ICE — buffer candidates if not yet ready
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         socketManager.emit("ice-candidate", {
@@ -86,7 +110,10 @@ export class PeerManager {
     return pc;
   }
 
-  async addTracksToConnection(socketId: string, stream: MediaStream): Promise<void> {
+  async addTracksToConnection(
+    socketId: string,
+    stream: MediaStream,
+  ): Promise<void> {
     const pc = this.peers.get(socketId);
     if (!pc) return;
 
@@ -106,7 +133,7 @@ export class PeerManager {
     try {
       const offer = await pc.createOffer({
         offerToReceiveAudio: true,
-        offerToReceiveVideo: false, // video-ready: change to true when adding video
+        offerToReceiveVideo: false
       });
       await pc.setLocalDescription(offer);
       socketManager.emit("offer", { to: socketId, offer });
@@ -119,19 +146,17 @@ export class PeerManager {
   async handleOffer(
     socketId: string,
     offer: RTCSessionDescriptionInit,
-    stream: MediaStream | null
+    stream: MediaStream | null,
   ): Promise<void> {
     let pc = this.peers.get(socketId);
     if (!pc) {
       pc = this.createConnection(socketId, stream);
     } else if (stream) {
-      // Ensure tracks are added even on renegotiation
       await this.addTracksToConnection(socketId, stream);
     }
 
     try {
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
-      // Flush buffered ICE candidates now that remote description is set
       await this.flushIceCandidates(socketId);
 
       const answer = await pc.createAnswer();
@@ -145,7 +170,7 @@ export class PeerManager {
 
   async handleAnswer(
     socketId: string,
-    answer: RTCSessionDescriptionInit
+    answer: RTCSessionDescriptionInit,
   ): Promise<void> {
     const pc = this.peers.get(socketId);
     if (!pc) {
@@ -172,7 +197,6 @@ export class PeerManager {
     const pc = this.peers.get(socketId);
     if (!pc) return;
 
-    // If remote description isn't set yet, buffer the candidate
     if (!pc.remoteDescription) {
       const buffer = this.iceCandidateBuffer.get(socketId) ?? [];
       buffer.push(candidate);
@@ -198,7 +222,7 @@ export class PeerManager {
       try {
         await pc.addIceCandidate(new RTCIceCandidate(candidate));
       } catch (err) {
-        console.error("[PeerManager] Failed to flush ICE candidate:", err);
+        console.error(`[PeerManager] Failed to flush ICE candidate for ${socketId}:`, err);
       }
     }
     this.iceCandidateBuffer.set(socketId, []);
@@ -213,6 +237,8 @@ export class PeerManager {
   }
 
   closeConnection(socketId: string): void {
+    this.stopVolumeMonitoring(socketId);
+
     const pc = this.peers.get(socketId);
     if (pc) {
       pc.ontrack = null;
@@ -250,7 +276,6 @@ export class PeerManager {
   }
 
   private attachRemoteAudio(socketId: string, stream: MediaStream): void {
-    // Remove stale element
     const existing = this.remoteAudioElements.get(socketId);
     if (existing) {
       existing.pause();
@@ -263,16 +288,13 @@ export class PeerManager {
     audio.autoplay = true;
     audio.muted = false;
     audio.volume = 1.0;
-    // playsInline needed on iOS
     audio.setAttribute("playsinline", "");
 
     audio.srcObject = stream;
 
-    // Some browsers need explicit play() call after srcObject assignment
     audio.onloadedmetadata = () => {
       audio.play().catch((err) => {
         console.warn(`[PeerManager] Audio autoplay blocked for ${socketId}:`, err);
-        // Retry on next user interaction
         const retry = () => {
           audio.play().catch(console.error);
           document.removeEventListener("click", retry);
@@ -281,11 +303,126 @@ export class PeerManager {
       });
     };
 
-    // Hide from layout but keep it in DOM for audio routing
     audio.style.cssText = "position:absolute;width:0;height:0;opacity:0;pointer-events:none;";
     document.body.appendChild(audio);
     this.remoteAudioElements.set(socketId, audio);
 
     console.log(`[PeerManager] Attached remote audio for ${socketId}`);
+  }
+
+  private stopVolumeMonitoring(socketId: string): void {
+    const frame = this.volumeFrames.get(socketId);
+
+    if (frame !== undefined) {
+      cancelAnimationFrame(frame);
+      this.volumeFrames.delete(socketId);
+    }
+
+    const source = this.mediaStreamSources.get(socketId);
+    if (source) {
+      try {
+        source.disconnect();
+      } catch (e) {
+        
+      }
+      this.mediaStreamSources.delete(socketId);
+    }
+
+    const analyser = this.analysers.get(socketId);
+    if (analyser) {
+      try {
+        analyser.disconnect();
+      } catch (e) {
+        
+      }
+      this.analysers.delete(socketId);
+    }
+
+    const audioContext = this.audioContexts.get(socketId);
+    if (audioContext && audioContext.state !== "closed") {
+      audioContext.close().catch(() => {});
+      this.audioContexts.delete(socketId);
+    }
+  }
+
+  private startVolumeMonitoring(socketId: string, stream: MediaStream): void {
+    this.stopVolumeMonitoring(socketId);
+
+    const audioTrack = stream.getAudioTracks()[0];
+
+    if (!audioTrack) return;
+
+    const AudioContextClass =
+      window.AudioContext ||
+      (
+        window as typeof window & {
+          webkitAudioContext?: typeof AudioContext;
+        }
+      ).webkitAudioContext;
+
+    if (!AudioContextClass) return;
+
+    try {
+      const audioContext = new AudioContextClass();
+
+      const analyser = audioContext.createAnalyser();
+
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.8;
+
+      const source = audioContext.createMediaStreamSource(stream);
+
+      source.connect(analyser);
+
+      this.audioContexts.set(socketId, audioContext);
+      this.analysers.set(socketId, analyser);
+      this.mediaStreamSources.set(socketId, source);
+
+      const data = new Uint8Array(analyser.fftSize);
+
+      let lastUpdate = 0;
+
+      const updateVolume = (timestamp: number) => {
+        const currentAnalyser = this.analysers.get(socketId);
+
+        if (!currentAnalyser) return;
+
+        currentAnalyser.getByteTimeDomainData(data);
+
+        let sum = 0;
+
+        for (let i = 0; i < data.length; i++) {
+          const normalized = (data[i] - 128) / 128;
+
+          sum += normalized * normalized;
+        }
+
+        const rms = Math.sqrt(sum / data.length);
+
+        const volume = Math.min(1, rms * 4);
+
+        // Only fire event if (volume > 0.01)
+        if (volume < 0.01) {
+          const frame = requestAnimationFrame(updateVolume);
+          this.volumeFrames.set(socketId, frame);
+          return;
+        }
+
+        // Don't cause React updates 60 times/sec.
+        if (timestamp - lastUpdate >= 50) {
+          this.fireEvent("volume", socketId, undefined, volume);
+
+          lastUpdate = timestamp;
+        }
+
+        const frame = requestAnimationFrame(updateVolume);
+
+        this.volumeFrames.set(socketId, frame);
+      };
+
+      requestAnimationFrame(updateVolume);
+    } catch (err) {
+      console.error(`[PeerManager] Failed to start volume monitoring for ${socketId}:`, err);
+    }
   }
 }
