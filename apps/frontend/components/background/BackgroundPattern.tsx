@@ -15,33 +15,6 @@ export const BackgroundPattern: React.FC = () => {
         }}
       />
 
-      {/* Top-left ambient glow — green brand accent */}
-      <div
-        className="absolute -top-32 -left-32 w-[600px] h-[600px] rounded-full opacity-[0.12]"
-        style={{
-          background: 'radial-gradient(circle at center, #22c55e 0%, transparent 70%)',
-          animation: 'pulse-slow 8s ease-in-out infinite',
-        }}
-      />
-
-      {/* Center-right ambient glow — purple accent */}
-      <div
-        className="absolute top-1/3 -right-48 w-[700px] h-[700px] rounded-full opacity-[0.08]"
-        style={{
-          background: 'radial-gradient(circle at center, #a855f7 0%, transparent 70%)',
-          animation: 'pulse-slow 10s ease-in-out infinite 2s',
-        }}
-      />
-
-      {/* Bottom-center ambient glow */}
-      <div
-        className="absolute -bottom-48 left-1/2 -translate-x-1/2 w-[800px] h-[400px] rounded-full opacity-[0.07]"
-        style={{
-          background: 'radial-gradient(ellipse at center, #22c55e 0%, transparent 70%)',
-          animation: 'pulse-slow 12s ease-in-out infinite 4s',
-        }}
-      />
-
       {/* Vignette overlay — keeps edges dark */}
       <div
         className="absolute inset-0"

@@ -134,8 +134,6 @@ export default function RoomCardList() {
 
   if (!rooms || rooms.length === 0) return <EmptyRoomCard />;
 
-  const activeRooms = rooms.filter((r) => r.members.length > 0).length;
-
   return (
     <div className="mt-8">
       {/* Section header */}
@@ -145,15 +143,6 @@ export default function RoomCardList() {
           <span className="text-xs text-gray-500 bg-white/[0.05] border border-white/[0.07] px-2.5 py-1 rounded-full">
             {rooms.length} {rooms.length === 1 ? 'room' : 'rooms'}
           </span>
-          {activeRooms > 0 && (
-            <span className="flex items-center gap-1.5 text-xs text-green-400 bg-green-500/10 border border-green-500/20 px-2.5 py-1 rounded-full">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-400" />
-              </span>
-              {activeRooms} active
-            </span>
-          )}
         </div>
       </div>
 
