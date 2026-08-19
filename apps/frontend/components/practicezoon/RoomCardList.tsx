@@ -134,8 +134,6 @@ export default function RoomCardList() {
 
   if (!rooms || rooms.length === 0) return <EmptyRoomCard />;
 
-  const activeRooms = rooms.filter((r) => r.members.length > 0).length;
-
   return (
     <div className="mt-8">
       {/* Section header */}

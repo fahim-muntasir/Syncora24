@@ -63,7 +63,6 @@ export const RoomCard = forwardRef<HTMLDivElement, RoomCardProps>(({ room }, ref
   };
 
   const isEnded = room.status === "ended";
-  const isActive = room.members.length > 0 && !isEnded;
   const isFull = !isUnlimited && room.members.length >= room.maxParticipants;
 
   const handleRoomClick = (roomId: string) => {
