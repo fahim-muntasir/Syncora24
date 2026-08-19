@@ -118,29 +118,37 @@ export default function RoomParticipant({
 
       <div className="absolute inset-0 flex items-center justify-center">
         {member.avatar ? (
-          <div className={` relative rounded-full ${isSpeaking && isUnMuted ? "ring-2 ring-emerald-400/70" : ""}`} >
+          <div
+            className={`relative rounded-full ${isSpeaking && isUnMuted
+                ? "ring-2 ring-white/60 animate-pulse"
+                : ""
+              }`}
+          >
             <Image
               src={member.avatar}
               alt={member.name}
               width={150}
               height={150}
-              className={`
-                rounded-full object-cover border-2
+              className={`rounded-full object-cover border-2
                 ${isLarge
                   ? "w-28 h-28 sm:w-32 sm:h-32 lg:w-36 lg:h-36"
                   : "w-16 h-16 sm:w-20 sm:h-20"
-                }
-                ${avatarBorderClass}
-              `}
+                } ${avatarBorderClass}`}
             />
           </div>
         ) : (
           <div
-            className={`relative rounded-full ${isSpeaking && isUnMuted ? "ring-2 ring-emerald-400/70" : ""}`}
+            className={`relative rounded-full ${isSpeaking && isUnMuted
+                ? "ring-2 ring-white/60 animate-pulse"
+                : ""
+              }`}
           >
             <div
               dangerouslySetInnerHTML={{ __html: avatarSvg }}
-              className={`rounded-full overflow-hidden border-2 flex items-center justify-center ${isLarge ? "w-28 h-28 sm:w-32 sm:h-32 lg:w-36 lg:h-36" : "w-16 h-16 sm:w-20 sm:h-20"} ${avatarBorderClass}`}
+              className={`rounded-full overflow-hidden border-2 flex items-center justify-center ${isLarge
+                  ? "w-28 h-28 sm:w-32 sm:h-32 lg:w-36 lg:h-36"
+                  : "w-16 h-16 sm:w-20 sm:h-20"
+                } ${avatarBorderClass}`}
             />
           </div>
         )}
@@ -152,7 +160,7 @@ export default function RoomParticipant({
             <Mic
               size={14}
               strokeWidth={2.5}
-              className="text-emerald-400"
+              className="text-gray-400"
               aria-label="Microphone on"
             />
           </div>
@@ -264,13 +272,13 @@ export default function RoomParticipant({
                 strokeWidth={2}
               />
             )}
-
-            {isSpeaking && isUnMuted && (
-              <div className="flex-shrink-0">
-                <VolumeIndicator volume={volume} />
-              </div>
-            )}
           </div>
+
+          {isSpeaking && isUnMuted && (
+            <div className="flex-shrink-0">
+              <VolumeIndicator volume={volume} />
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -221,7 +221,7 @@ export default function ParticipantsList({
               : "cursor-default"
               } ${isMuted
                 ? "text-red-400/60"
-                : "text-green-400/80"
+                : "text-gray-400/80"
               }`}
             title={
               isSelf
