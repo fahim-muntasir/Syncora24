@@ -104,13 +104,23 @@ http://localhost:8001
 
 ## Key Features
 
-- JWT-based authentication
-- WebRTC signaling with Socket.IO
+- JWT-based authentication with access and refresh tokens
+- WebRTC signaling through Socket.IO
+- Real-time voice room communication
 - Real-time messaging
-- Redis-powered room state management
+- Role-based room moderation
+- Individual participant mute and unmute controls
+- Global mute-all room controls
+- Persistent moderation state using Redis
+- Permission-based host and moderator actions
+- Real-time room state synchronization
+- Room lifecycle management using room status
+- Host-controlled room ending
+- Real-time room-ended events for participants and room listings
+- Redis-powered temporary room state management
 - MongoDB data persistence
-- MVC architecture
-- Docker support
+- MVC-based backend architecture
+- Docker support for local development
 
 <!-- ---
 

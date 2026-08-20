@@ -116,14 +116,63 @@ The frontend communicates with the backend through REST APIs for authentication 
 
 ## Key Features
 
-- **Real-Time Voice Rooms** — Low-latency voice communication powered by WebRTC with Socket.IO signaling.
-- **Live Room Chat** — Instant text messaging within practice rooms.
-- **Secure Authentication** — JWT-based authentication with access and refresh token support.
-- **Room Management** — Create, join, and manage language practice rooms in real time.
-- **Redis Integration** — Fast room state management and caching for scalable real-time communication.
-- **Monorepo Architecture** — Organized using Turborepo with separate frontend and backend applications.
-- **Containerized Development** — Docker Compose for consistent local development and deployment.
-- **Modern Full-Stack Stack** — Built with Next.js, Express.js, TypeScript, MongoDB, Redis, Socket.IO, and WebRTC.
+### Real-Time Rooms
+
+- Low-latency voice communication powered by WebRTC.
+- Socket.IO-based signaling for establishing peer-to-peer connections.
+- Real-time speaking indicators and microphone status updates.
+
+### Room Moderation & Host Controls
+
+Syncora24 includes a real-time room moderation system that allows hosts and moderators to manage participants during active voice sessions.
+
+- Members can mute and unmute themselves.
+- Hosts and moderators can mute or unmute themselves.
+- Hosts and moderators can mute or unmute individual participants.
+- Hosts can mute all participants in the room.
+- Users muted through **Mute All** cannot unmute themselves until the moderation state allows it.
+- Individual forced mute state is handled separately from the global **Mute All** state.
+- Hosts and moderators can manage participant microphone status directly from the participant list.
+- Room moderation state is synchronized in real time using Socket.IO.
+- Persistent moderation state is stored in Redis so users receive the correct mute state when joining or rejoining a room.
+
+### Room Lifecycle Management
+
+- Hosts can end an active room.
+- Ending a room updates its status instead of immediately deleting the room.
+- All active participants receive the room-ended event in real time.
+- Participants are shown a room-ended interface instead of being abruptly redirected.
+- Global room-ended events allow room listings to update in real time.
+
+### Live Room Chat
+
+- Instant text messaging between room participants using Socket.IO.
+
+### Secure Authentication
+
+- JWT-based authentication using access and refresh tokens.
+- Protected routes and authenticated room access.
+
+### Redis-Based Room State
+
+Redis is used to manage temporary and real-time room state, including:
+
+- Active room data
+- Room participants
+- Individual forced mute state
+- Global mute-all state
+- Room lifecycle status
+
+### Monorepo Architecture
+
+- Organized with Turborepo and pnpm workspaces.
+- Separate frontend and backend applications.
+- Shared development tooling and configuration.
+
+### Containerized Development
+
+- Docker Compose for consistent local development.
+- Redis containerized for local real-time room state management.
 
 ---
 

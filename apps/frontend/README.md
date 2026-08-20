@@ -90,10 +90,37 @@ http://localhost:3000
 
 ## Key Features
 
+### Authentication
+
 - JWT-based authentication
-- Real-time voice communication with WebRTC
-- Live chat using Socket.IO
-- RTK Query for efficient data fetching and caching
-- Global state management with Redux Toolkit
-- Responsive UI built with Tailwind CSS
+- Access and refresh token handling
 - Protected routes using Next.js Middleware
+
+### Real-Time Communication
+
+- WebRTC-based peer-to-peer voice communication
+- Socket.IO signaling
+- Real-time microphone state synchronization
+- Speaking indicators for active participants
+
+### Room Moderation
+
+The frontend provides different microphone controls depending on the user's role.
+
+#### Members
+
+- Can mute themselves
+- Can unmute themselves when they are not restricted by room moderation
+
+#### Hosts and Moderators
+
+- Can mute and unmute themselves
+- Can mute and unmute individual participants
+- Can manage participant microphone controls from the participant list
+- Receive real-time moderation updates
+
+#### Global Mute All
+
+The room supports a global mute-all state controlled by the host.
+
+The final microphone state is derived from multiple pieces of room state:
