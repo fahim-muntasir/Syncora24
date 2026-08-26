@@ -2,7 +2,11 @@
 import { io, Socket } from "socket.io-client";
 
 type EventHandler = (...args: unknown[]) => void;
-export type ConnectionState = "connected" | "disconnected" | "reconnecting" | "error";
+export type ConnectionState =
+  | "connected"
+  | "disconnected"
+  | "reconnecting"
+  | "error";
 
 interface PendingListener {
   event: string;
@@ -82,13 +86,38 @@ export class SocketManager {
     this.socket.emit(event, data);
   }
 
+  emitWithAck<TResponse extends { success: boolean }>(
+    event: string,
+    data: unknown,
+  ): Promise<TResponse> {
+    return new Promise((resolve, reject) => {
+      const socket = this.getSocket();
+
+      if (!socket) {
+        reject(new Error("Socket is not connected"));
+
+        return;
+      }
+
+      socket.emit(event, data, (response: TResponse) => {
+        if (!response?.success) {
+          reject(new Error("Socket operation failed"));
+
+          return;
+        }
+
+        resolve(response);
+      });
+    });
+  }
+
   on(event: string, handler: EventHandler): () => void {
     if (!this.socket) {
       // Queue until connect() is called
       this.pendingListeners.push({ event, handler });
       return () => {
         this.pendingListeners = this.pendingListeners.filter(
-          (p) => !(p.event === event && p.handler === handler)
+          (p) => !(p.event === event && p.handler === handler),
         );
       };
     }

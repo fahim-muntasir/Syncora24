@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import Modal from "../../common/Modal";
@@ -14,7 +14,7 @@ import {
   Lock,
   Copy,
 } from "lucide-react";
-import { useAddRoomMemberMutation, useGetSingleRoomQuery, roomApiSlice } from "@/libs/features/room/roomApiSlice";
+import { useGetSingleRoomQuery, roomApiSlice } from "@/libs/features/room/roomApiSlice";
 import { useAppSelector, useAppDispatch } from "@/libs/hooks";
 import { socketManager } from "@/libs/socket/index";
 import { generateIdenticonAvatar } from "@/utils/generateAvatar";
@@ -35,12 +35,12 @@ interface Props {
   joinRoom: () => Promise<void>;
 }
 
-export default function RoomDetailsModal({ 
-  isOpen, 
-  onClose, 
+export default function RoomDetailsModal({
+  isOpen,
+  onClose,
   joinRoom
 }: Props) {
-  const [addRoomMember, { isLoading }] = useAddRoomMemberMutation();
+  const [isJoining, setIsJoining] = useState(false);
   const currentUser = useAppSelector((state) => state.auth.user);
   const router = useRouter();
   const { id } = useParams();
@@ -125,22 +125,45 @@ export default function RoomDetailsModal({
   }, [dispatch, roomId]);
 
   const joinRoomHandler = async () => {
-    if (!roomId) return toast.error("Room ID is missing.");
-    if (!currentUser?.id) return toast.error("User not authenticated.");
+    if (!roomId) {
+      toast.error("Room ID is missing.");
+      return;
+    }
 
-    const joinPromise = addRoomMember(roomId).unwrap();
-    toast.promise(joinPromise, {
-      loading: "Joining room…",
-      success: "You joined the room!",
-      error: (err: { data?: { error?: string } }) => err?.data?.error ?? "Failed to join room.",
-    });
+    if (!currentUser?.id) {
+      toast.error("User not authenticated.");
+      return;
+    }
+
+    setIsJoining(true);
+
+    const toastId = toast.loading("Joining room…");
 
     try {
-      await joinPromise;
       await joinRoom();
+
+      toast.success(
+        "You joined the room!",
+        { id: toastId },
+      );
+
       onClose();
-    } catch (err) {
-      console.error("Join room failed:", err);
+    } catch (error) {
+      console.error(
+        "Join room failed:",
+        error,
+      );
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to join room.";
+
+      toast.error(message, {
+        id: toastId,
+      });
+    } finally {
+      setIsJoining(false);
     }
   };
 
@@ -221,17 +244,17 @@ export default function RoomDetailsModal({
 
           <div className="flex flex-col gap-2 sm:items-end flex-shrink-0">
             <button
-              className={`group flex items-center gap-2.5 px-6 py-3 rounded-xl font-semibold text-sm transition-all duration-200 active:scale-95 ${isLoading
+              className={`group flex items-center gap-2.5 px-6 py-3 rounded-xl font-semibold text-sm transition-all duration-200 active:scale-95 ${isJoining
                 ? "bg-green-500/50 text-white/70 cursor-not-allowed"
                 : "bg-green-500 hover:bg-green-400 text-white shadow-lg shadow-green-500/20 hover:shadow-green-500/30"
                 }`}
-              disabled={isLoading}
+              disabled={isJoining}
               onClick={joinRoomHandler}
             >
-              <DoorOpen size={18} className={isLoading ? "" : "group-hover:translate-x-0.5 transition-transform duration-200"} />
-              {isLoading ? "Joining…" : "Join Room"}
+              <DoorOpen size={18} className={isJoining ? "" : "group-hover:translate-x-0.5 transition-transform duration-200"} />
+              {isJoining ? "Joining…" : "Join Room"}
             </button>
-            {spotsLeft > 0 && !isLoading && (
+            {spotsLeft > 0 && !isJoining && (
               <span className="text-xs text-gray-500">{spotsLeft} spot{spotsLeft !== 1 ? "s" : ""} remaining</span>
             )}
           </div>

@@ -1,4 +1,3 @@
-// hooks/useRoomSocket.ts
 import { useEffect, useRef, useCallback, useState } from "react";
 import { socketManager } from "@/libs/socket/index";
 import { PeerManager } from "@/libs/webrtc/PeerManager";
@@ -14,6 +13,7 @@ import {
   removeVolumeLevel,
 } from "@/libs/features/room/roomSlice";
 import { useAppDispatch } from "@/libs/hooks";
+import { useLazyGetIceServersQuery } from "@/libs/features/webrtc/webrtcApiSlice";
 
 export interface RoomUser {
   id: string;
@@ -47,37 +47,87 @@ export function useRoomSocket({
   const hasJoinedRef = useRef(false);
   const peerManagerRef = useRef<PeerManager | null>(null);
   const socketToUserRef = useRef<Map<string, string>>(new Map());
+  const joiningRef = useRef(false);
+
+  const [getIceServers] = useLazyGetIceServersQuery();
 
   // ── Join ────────────────────────────────────────────────────────────────────
   const joinRoom = useCallback(async () => {
-    if (!roomId || !currentUserId) return;
+    if (!roomId || !currentUserId) {
+      throw new Error("Missing room or user information");
+    }
 
-    peerManagerRef.current = new PeerManager(roomId);
+    if (hasJoinedRef.current || joiningRef.current) {
+      return;
+    }
 
-    peerManagerRef.current.on("volume", (socketId, _event, volume = 0) => {
-      const userId = socketToUserRef.current.get(socketId);
+    joiningRef.current = true;
 
-      if (!userId) return;
-      console.log("volume from event", userId, volume);
-      dispatch(
-        setVolumeLevel({
-          userId,
-          volume,
-        }),
-      );
-    });
+    try {
+      const response = await getIceServers().unwrap();
 
-    hasJoinedRef.current = true;
+      if (!response.success || !Array.isArray(response.data)) {
+        throw new Error("Invalid ICE server response");
+      }
 
-    await startAudio(currentUserId, roomId);
+      const peerConfiguration: RTCConfiguration = {
+        iceServers: response.data,
+      };
 
-    socketManager.emit("join-room", {
-      roomId,
-      user: { id: currentUserId, name: currentUserName },
-    });
+      peerManagerRef.current = new PeerManager(roomId, peerConfiguration);
 
-    console.log(`[useRoomSocket] Joined room ${roomId}`);
-  }, [roomId, currentUserId, currentUserName, startAudio]);
+      peerManagerRef.current.on("volume", (socketId, _event, volume = 0) => {
+        const userId = socketToUserRef.current.get(socketId);
+
+        if (!userId) return;
+
+        dispatch(
+          setVolumeLevel({
+            userId,
+            volume,
+          }),
+        );
+      });
+
+      await startAudio(currentUserId, roomId);
+
+      await socketManager.emitWithAck<{
+        success: boolean;
+        message?: string;
+      }>("join-room", {
+        roomId,
+        user: {
+          id: currentUserId,
+          name: currentUserName,
+        },
+      });
+
+      hasJoinedRef.current = true;
+
+      console.log(`[useRoomSocket] Successfully joined room ${roomId}`);
+    } catch (error) {
+      console.error("[useRoomSocket] Failed to join room:", error);
+
+      peerManagerRef.current?.closeAll();
+      peerManagerRef.current = null;
+
+      stopAudio(currentUserId);
+
+      hasJoinedRef.current = false;
+
+      throw error;
+    } finally {
+      joiningRef.current = false;
+    }
+  }, [
+    roomId,
+    currentUserId,
+    currentUserName,
+    getIceServers,
+    startAudio,
+    stopAudio,
+    dispatch,
+  ]);
 
   // ── Leave ───────────────────────────────────────────────────────────────────
   const leaveRoom = useCallback(() => {
@@ -116,7 +166,9 @@ export function useRoomSocket({
             participant.user.id,
           );
 
-          console.log(`[useRoomSocket] Existing participant mapped: ${participant.user.name} (${participant.socketId})`);
+          console.log(
+            `[useRoomSocket] Existing participant mapped: ${participant.user.name} (${participant.socketId})`,
+          );
         }
       },
     );

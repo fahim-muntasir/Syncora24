@@ -19,6 +19,8 @@ import {
 // room chats controller import
 import { createChatController } from "../api/v1/chat";
 
+import { getIceServersController } from "../api/v1/webrtc";
+
 router.get("/health", (_req: Request, res: Response) => {
   res.status(200).json({
     health: "Ok",
@@ -45,5 +47,7 @@ router
 
 // routes for room chats
 router.route("/v1/rooms/:roomId/chat").post(auth, createChatController);
+
+router.route("/v1/webrtc/ice-servers").get(auth, getIceServersController);
 
 export default router;
