@@ -1,7 +1,7 @@
 import { Server } from "socket.io";
 import { Server as HttpServer } from "http";
 import { canModerateRoom } from "../utils/canModarateRoom";
-import { removeMember, findSingleItem, endRoom } from "../lib/room";
+import { removeMember, findSingleItem, endRoom, addMember } from "../lib/room";
 import {
   muteUser,
   unmuteUser,
@@ -21,47 +21,145 @@ export const initializeSocket = (server: HttpServer) => {
   io.on("connection", (socket) => {
     console.log("A user connected:", socket.id);
 
-    socket.on("join-room", async ({ roomId, user }) => {
-      const existingSockets = await io?.in(roomId).fetchSockets();
+    socket.on(
+      "join-room",
+      async (
+        { roomId, user },
+        callback?: (response: { success: boolean; message?: string }) => void,
+      ) => {
+        try {
+          console.log(`[Socket] ${user.id} joining realtime room ${roomId}`);
 
-      const existingUsers = (existingSockets ?? [])
-        .filter((existingSocket) => existingSocket.id !== socket.id)
-        .map((existingSocket) => ({
-          user: {
-            id: existingSocket.data.userId,
-            name: existingSocket.data.userName,
-          },
-          socketId: existingSocket.id,
-        }))
-        .filter((item) => item.user.id);
+          // Prevent duplicate joining
+          if (socket.data.roomId === roomId && socket.rooms.has(roomId)) {
+            callback?.({
+              success: true,
+              message: "Already joined room",
+            });
 
-      // Join the room
-      socket.join(roomId);
-      socket.join(`user:${user.id}`);
+            return;
+          }
 
-      socket.data.roomId = roomId;
-      socket.data.userId = user.id;
-      socket.data.userName = user.name;
-      socket.data.socketId = socket.id;
+          // 1. Validate room exists
+          const room = await findSingleItem(roomId);
 
-      const moderationState = await getRoomModerationState(roomId);
+          if (!room) {
+            callback?.({
+              success: false,
+              message: "Room not found",
+            });
 
-      socket.emit("room-force-muted-state", {
-        roomId,
-        ...moderationState,
-      });
+            return;
+          }
 
-      socket.emit("room-participants", {
-        roomId,
-        participants: existingUsers,
-      });
+          // Optional: prevent joining ended room
+          if (room.isEnded) {
+            callback?.({
+              success: false,
+              message: "This room has ended",
+            });
 
-      socket.to(roomId).emit("user-joined", {
-        roomId,
-        user,
-        socketId: socket.id,
-      });
-    });
+            return;
+          }
+
+          // 2. Check capacity
+          const existingMember = room.members?.some(
+            (member: { id: string }) => member.id === user.id,
+          );
+
+          if (!existingMember && room.members.length >= room.maxParticipants) {
+            callback?.({
+              success: false,
+              message: "Room is full",
+            });
+
+            return;
+          }
+
+          // 3. Add member to database FIRST
+          if (!existingMember) {
+            await addMember({
+              roomId,
+              member: {
+                id: user.id,
+                name: user.name,
+              },
+            });
+          }
+
+          // 4. Get existing realtime participants BEFORE joining
+          const existingSockets = await io?.in(roomId).fetchSockets();
+
+          const existingUsers = (existingSockets ?? [])
+            .filter((existingSocket) => existingSocket.id !== socket.id)
+            .map((existingSocket) => ({
+              user: {
+                id: existingSocket.data.userId,
+                name: existingSocket.data.userName,
+              },
+              socketId: existingSocket.id,
+            }))
+            .filter((item) => item.user.id);
+
+          // 5. Join Socket.IO rooms
+          socket.join(roomId);
+
+          socket.join(`user:${user.id}`);
+
+          // 6. Store socket metadata
+          socket.data.roomId = roomId;
+          socket.data.userId = user.id;
+          socket.data.userName = user.name;
+          socket.data.socketId = socket.id;
+
+          // 7. Get moderation state
+          const moderationState = await getRoomModerationState(roomId);
+
+          // 8. Send state to joining user
+          socket.emit("room-force-muted-state", {
+            roomId,
+            ...moderationState,
+          });
+
+          // 9. Send existing realtime users to joining user
+          socket.emit("room-participants", {
+            roomId,
+            participants: existingUsers,
+          });
+
+          // 10. Notify existing realtime users
+          socket.to(roomId).emit("user-joined", {
+            roomId,
+            user,
+            socketId: socket.id,
+          });
+
+          // 11. Update everyone listening to room data
+          io?.emit("joinedMember", {
+            roomId,
+            newMember: {
+              id: user.id,
+              name: user.name,
+            },
+          });
+
+          console.log(`[Socket] ${user.id} successfully joined ${roomId}`);
+
+          // 12. Confirm success to the joining frontend
+          callback?.({
+            success: true,
+            message: "Joined room successfully",
+          });
+        } catch (error) {
+          console.error("[Socket] Failed to join room:", error);
+
+          callback?.({
+            success: false,
+            message: "Failed to join room",
+          });
+        }
+      },
+    );
 
     socket.on("offer", ({ to, offer }) => {
       console.log("Forwarding offer to:", to);

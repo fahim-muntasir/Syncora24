@@ -31,7 +31,10 @@ export class PeerManager {
   private mediaStreamSources: Map<string, MediaStreamAudioSourceNode> = new Map();
   private iceCandidateBuffer: Map<string, RTCIceCandidateInit[]> = new Map();
 
-  constructor(private readonly roomId: string) {
+  constructor(
+    private readonly roomId: string, 
+    private readonly peerConfiguration: RTCConfiguration,
+  ) {
     console.log(`[PeerManager] Created for room: ${roomId}`);
   }
 
@@ -58,7 +61,7 @@ export class PeerManager {
   ): RTCPeerConnection {
     if (this.peers.has(socketId)) return this.peers.get(socketId)!;
 
-    const pc = new RTCPeerConnection(ICE_SERVERS);
+    const pc = new RTCPeerConnection(this.peerConfiguration);
 
     if (stream) {
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
