@@ -10,6 +10,10 @@ export const addMembersController = async (
   const roomId = req.params.roomId as string; 
 
   try {
+    if (!req.user?.id || !req.user.fullName) {
+      throw new Error("Authenticated user information is required");
+    }
+
     const member = {
       id: req.user?.id,
       name: req.user?.fullName,
