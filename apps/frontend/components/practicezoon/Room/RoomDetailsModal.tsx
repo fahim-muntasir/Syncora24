@@ -45,9 +45,7 @@ export default function RoomDetailsModal({
   const router = useRouter();
   const { id } = useParams();
   const roomId = Array.isArray(id) ? id[0] : id;
-  const { data: roomResponse } = useGetSingleRoomQuery(roomId || "", {
-    skip: !roomId,
-  });
+  const { data: roomResponse, isLoading: isRoomLoading, isFetching } = useGetSingleRoomQuery(roomId || "", { skip: !roomId });
 
   const roomData = roomResponse?.data;
   const level = levelConfig[roomData?.level as keyof typeof levelConfig] ?? levelConfig.Beginner;
@@ -262,80 +260,126 @@ export default function RoomDetailsModal({
 
         <div className="border-t border-white/[0.06] pt-6 mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-white uppercase tracking-wider">Participants</h2>
-            <span className="text-xs text-gray-500 bg-white/[0.05] border border-white/[0.07] px-2.5 py-1 rounded-full">
-              {roomData?.members.length} / {roomData?.maxParticipants}
-            </span>
+            <h2 className="text-sm font-semibold text-white uppercase tracking-wider">
+              Participants
+            </h2>
+
+            {isRoomLoading || isFetching ? (
+              <div className="h-6 w-16 rounded-full bg-white/[0.05] animate-pulse" />
+            ) : (
+              <span className="text-xs text-gray-500 bg-white/[0.05] border border-white/[0.07] px-2.5 py-1 rounded-full">
+                {roomData?.members?.length ?? 0} /{" "}
+                {roomData?.maxParticipants ?? 0}
+              </span>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {roomData?.members.map((member) => {
-              const isHost = member.id === roomData?.hostId;
-              const isModerator = MOCK_MODERATOR_IDS.includes(member.id);
-              const avatarSvg = member.avatar || generateIdenticonAvatar(member.name, 60);
-
-              return (
+          {isRoomLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {[1, 2].map((item) => (
                 <div
-                  key={member.id}
-                  className="group flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:border-white/[0.10] hover:bg-white/[0.05] transition-all duration-200"
+                  key={item}
+                  className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]"
                 >
-                  <div className="relative flex-shrink-0">
-                    <div
-                      dangerouslySetInnerHTML={{ __html: avatarSvg }}
-                      className={`
-                        rounded-full
-                        overflow-hidden
-                        border-2
-                        transition-all
-                        duration-300
-                        flex
-                        items-center
-                        justify-center
-                        ${isHost ? "border-amber-500/40" : isModerator ? "border-blue-500/30" : "border-white/10"}
-                      `}
-                      style={{ width: 44, height: 44 }}
-                    />
-                    {/* Presence dot */}
-                    <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#121212] bg-green-400" />
-                  </div>
+                  <div className="w-11 h-11 rounded-full bg-white/[0.06] animate-pulse" />
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-medium text-white text-sm truncate">{member.name}</span>
-                      {isHost && <Crown size={12} className="text-amber-400 flex-shrink-0" />}
-                      {isModerator && !isHost && (
-                        <ShieldCheck size={12} className="text-blue-400 flex-shrink-0" />
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <Mic size={11} className="text-gray-500" />
-                      <span className="text-xs text-gray-500">
-                        {isHost ? "Host" : isModerator ? "Moderator" : "Member"}
-                      </span>
-                    </div>
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3 w-24 rounded bg-white/[0.06] animate-pulse" />
+                    <div className="h-2.5 w-16 rounded bg-white/[0.04] animate-pulse" />
                   </div>
                 </div>
-              );
-            })}
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {roomData?.members?.map((member) => {
+                const isHost = member.id === roomData?.hostId;
+                const isModerator = MOCK_MODERATOR_IDS.includes(member.id);
 
-            {/* Empty slots */}
-            {Array.from({
-              length: Math.max(
-                0,
-                (roomData?.maxParticipants ?? 0) - (roomData?.members?.length ?? 0)
-              ),
-            }).map((_, i) => (
-              <div
-                key={`empty-${i}`}
-                className="flex items-center gap-3 p-3 rounded-xl border border-dashed border-white/[0.06]"
-              >
-                <div className="w-11 h-11 rounded-full border border-dashed border-white/[0.08] flex items-center justify-center">
-                  <div className="w-2 h-2 rounded-full bg-white/[0.08]" />
+                const avatarSvg =
+                  member.avatar ||
+                  generateIdenticonAvatar(member.name, 60);
+
+                return (
+                  <div
+                    key={member.id}
+                    className="group flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:border-white/[0.10] hover:bg-white/[0.05] transition-all duration-200"
+                  >
+                    <div className="relative flex-shrink-0">
+                      <div
+                        dangerouslySetInnerHTML={{
+                          __html: avatarSvg,
+                        }}
+                        className={`rounded-full overflow-hidden border-2 transition-all duration-300 flex items-center justify-center ${isHost ? "border-amber-500/40" : isModerator ? "border-blue-500/30" : "border-white/10"}`}
+                        style={{ width: 44, height: 44 }}
+                      />
+
+                      <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#121212] bg-green-400" />
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-medium text-white text-sm truncate">
+                          {member.name}
+                        </span>
+
+                        {isHost && (
+                          <Crown
+                            size={12}
+                            className="text-amber-400 flex-shrink-0"
+                          />
+                        )}
+
+                        {isModerator && !isHost && (
+                          <ShieldCheck
+                            size={12}
+                            className="text-blue-400 flex-shrink-0"
+                          />
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <Mic
+                          size={11}
+                          className="text-gray-500"
+                        />
+
+                        <span className="text-xs text-gray-500">
+                          {isHost
+                            ? "Host"
+                            : isModerator
+                              ? "Moderator"
+                              : "Member"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Empty slots */}
+              {Array.from({
+                length: Math.max(
+                  0,
+                  (roomData?.maxParticipants ?? 0) -
+                  (roomData?.members?.length ?? 0),
+                ),
+              }).map((_, i) => (
+                <div
+                  key={`empty-${i}`}
+                  className="flex items-center gap-3 p-3 rounded-xl border border-dashed border-white/[0.06]"
+                >
+                  <div className="w-11 h-11 rounded-full border border-dashed border-white/[0.08] flex items-center justify-center">
+                    <div className="w-2 h-2 rounded-full bg-white/[0.08]" />
+                  </div>
+
+                  <span className="text-xs text-gray-600">
+                    Open slot
+                  </span>
                 </div>
-                <span className="text-xs text-gray-600">Open slot</span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="border-t border-white/[0.06] pt-5 flex items-center justify-between gap-4">

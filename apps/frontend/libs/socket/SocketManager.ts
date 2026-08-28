@@ -13,6 +13,11 @@ interface PendingListener {
   handler: EventHandler;
 }
 
+type SocketResponse = {
+  success: boolean;
+  message?: string;
+};
+
 export class SocketManager {
   private static instance: SocketManager | null = null;
   private socket: Socket | null = null;
@@ -86,22 +91,34 @@ export class SocketManager {
     this.socket.emit(event, data);
   }
 
-  emitWithAck<TResponse extends { success: boolean }>(
+  emitWithAck<TResponse extends SocketResponse>(
     event: string,
     data: unknown,
   ): Promise<TResponse> {
     return new Promise((resolve, reject) => {
       const socket = this.getSocket();
 
-      if (!socket) {
+      if (!socket?.connected) {
         reject(new Error("Socket is not connected"));
 
         return;
       }
 
       socket.emit(event, data, (response: TResponse) => {
-        if (!response?.success) {
-          reject(new Error("Socket operation failed"));
+        if (!response) {
+          reject(
+            new Error("No response received from server"),
+          );
+
+          return;
+        }
+
+        if (!response.success) {
+          reject(
+            new Error(
+              response.message ?? "Socket operation failed",
+            ),
+          );
 
           return;
         }

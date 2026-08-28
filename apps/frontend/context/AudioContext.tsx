@@ -382,7 +382,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
       setIsAudioEnabled(true);
       dispatch(setAudioEnabled(true));
       dispatch(setMuted(true));
-      toast.success("Joined room — mic muted by default");
+      // toast.success("Joined room — mic muted by default");
       return null;
     },
     [dispatch],

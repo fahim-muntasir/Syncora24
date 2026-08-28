@@ -2,8 +2,8 @@ import redis from "../../redis";
 import createHttpError from "http-errors";
 
 type RoomMember = {
-  id?: string;
-  name?: string;
+  id: string;
+  name: string;
   avatar?: string;
 };
 
@@ -12,49 +12,106 @@ type AddMemberParams = {
   member: RoomMember;
 };
 
-export const addMember = async ({ roomId, member }: AddMemberParams) => {
+type AddMemberResult = {
+  added: boolean;
+  alreadyMember: boolean;
+};
+
+export const addMember = async ({
+  roomId,
+  member,
+}: AddMemberParams): Promise<AddMemberResult> => {
+  const roomKey = `room:${roomId}`;
+
   try {
-    const roomKey = `room:${roomId}`;
+    const result = (await redis.eval(
+      `
+      local roomJson = redis.call("JSON.GET", KEYS[1], "$")
 
-    // Fetch full room data
-    const roomJson = await redis.call("JSON.GET", roomKey, "$");
-    if (!roomJson || roomJson === "null") {
-      throw createHttpError(404, "Room not found");
-    }
+      if not roomJson or roomJson == "null" then
+        return {0, "ROOM_NOT_FOUND"}
+      end
 
-    const [roomData] = JSON.parse(roomJson as string); // JSON.GET with `$` returns an array
+      local roomArray = cjson.decode(roomJson)
+      local room = roomArray[1]
 
-    // Check if members array exists
-    const currentMembers: RoomMember[] = roomData.members || [];
-    const maxParticipants: number = roomData.maxParticipants || Infinity;
+      -- Check room status
+      if room.isEnded == true then
+        return {0, "ROOM_ENDED"}
+      end
 
-    // Check if member already exists (by ID)
-    const alreadyExists = currentMembers.some(
-      (m) => m.id && m.id === member.id
-    );
-    if (alreadyExists) {
-      throw createHttpError(409, "Member already exists in the room");
-    }
+      local members = room.members or {}
+      local userId = ARGV[1]
+      local maxParticipants = room.maxParticipants
 
-    // Check if maxParticipants is reached
-    if (currentMembers.length >= maxParticipants) {
-      throw createHttpError(403, "Maximum number of participants reached");
-    }
+      -- Validate capacity configuration
+      if not maxParticipants then
+        return {0, "INVALID_ROOM_CAPACITY"}
+      end
 
-    // Append new member
-    const result = await redis.call(
-      "JSON.ARRAPPEND",
+      -- Check whether the user is already a member
+      for _, existingMember in ipairs(members) do
+        if existingMember.id == userId then
+          return {1, "ALREADY_MEMBER"}
+        end
+      end
+
+      -- Check room capacity
+      if #members >= maxParticipants then
+        return {0, "ROOM_FULL"}
+      end
+
+      -- Add member atomically
+      redis.call(
+        "JSON.ARRAPPEND",
+        KEYS[1],
+        "$.members",
+        ARGV[2]
+      )
+
+      -- Keep your existing behavior
+      redis.call("PERSIST", KEYS[1])
+
+      return {1, "MEMBER_ADDED"}
+      `,
+      1,
       roomKey,
-      "$.members",
-      JSON.stringify(member)
-    );
+      member.id,
+      JSON.stringify(member),
+    )) as [number, string];
 
-    // remove the room expiration
-    await redis.persist(roomKey);
+    const [success, code] = result;
+    if (!success) {
+      switch (code) {
+        case "ROOM_NOT_FOUND":
+          throw createHttpError(404, "This room is no longer available.");
 
-    return result;
+        case "ROOM_ENDED":
+          throw createHttpError(400, "This room has already ended.");
+
+        case "ROOM_FULL":
+          throw createHttpError(403, "This room is full.");
+
+        case "INVALID_ROOM_CAPACITY":
+          throw createHttpError(
+            500,
+            "Unable to join the room. Please try again later.",
+          );
+
+        default:
+          throw createHttpError(
+            500,
+            "Something went wrong while joining the room. Please try again.",
+          );
+      }
+    }
+
+    return {
+      added: code === "MEMBER_ADDED",
+      alreadyMember: code === "ALREADY_MEMBER",
+    };
   } catch (error) {
-    console.error("Error in lib/room/addMember:", error);
+    console.error("[Room] Failed to add member:", error);
     throw error;
   }
 };
