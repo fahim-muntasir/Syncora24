@@ -26,6 +26,7 @@ export interface UseRoomSocketOptions {
   currentUserName?: string;
   onUserJoined?: (data: { user: RoomUser; socketId: string }) => void;
   onUserLeft?: (data: { memberId: string; socketId: string }) => void;
+  onKicked?: () => void;
 }
 
 export interface UseRoomSocketReturn {
@@ -40,6 +41,7 @@ export function useRoomSocket({
   currentUserName,
   onUserJoined,
   onUserLeft,
+  onKicked,
 }: UseRoomSocketOptions): UseRoomSocketReturn {
   const { startAudio, stopAudio, localStreamRef, streamVersion } = useAudio();
   const dispatch = useAppDispatch();
@@ -94,6 +96,7 @@ export function useRoomSocket({
       await socketManager.emitWithAck<{
         success: boolean;
         message?: string;
+        code?: string;
       }>("join-room", {
         roomId,
         user: {
@@ -128,6 +131,21 @@ export function useRoomSocket({
     stopAudio,
     dispatch,
   ]);
+
+  useEffect(() => {
+    if (!roomId) return;
+
+    return socketManager.on("room-member-kicked", (payload: unknown) => {
+      const data = payload as { roomId: string; memberId: string };
+      if (data.roomId !== roomId || data.memberId !== currentUserId) return;
+
+      stopAudio(currentUserId);
+      peerManagerRef.current?.closeAll();
+      peerManagerRef.current = null;
+      hasJoinedRef.current = false;
+      onKicked?.();
+    });
+  }, [roomId, currentUserId, onKicked, stopAudio]);
 
   // ── Leave ───────────────────────────────────────────────────────────────────
   const leaveRoom = useCallback(() => {

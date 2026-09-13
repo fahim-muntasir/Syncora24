@@ -4,3 +4,4 @@ export * from "./addMember";
 export * from "./findOne";
 export * from "./removeMember";
 export * from "./endRoom";
+export * from "./kickMember";

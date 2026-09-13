@@ -22,7 +22,9 @@ export default function RoomLayout({
   const currentUser = useAppSelector((state) => state.auth.user);
   const { unMutedUsers, speakingUsers } = useAppSelector((state) => state.room);
   const currentUserIsHost = Boolean(room && currentUser && room.hostId === currentUser.id);
-  const currentUserIsModerator = false;
+  const currentUserIsModerator = Boolean(
+    room && currentUser && (room.moderatorIds ?? []).includes(currentUser.id),
+  );
   const raisedHandCount = 0;
 
   return (
@@ -39,6 +41,7 @@ export default function RoomLayout({
           room={room}
           isJoined={isJoined}
           currentUserIsHost={currentUserIsHost}
+          currentUserIsModerator={currentUserIsModerator}
         />
         <ControlsBar
           currentUserIsHost={currentUserIsHost}

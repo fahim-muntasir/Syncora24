@@ -19,6 +19,8 @@ export type RoomType = {
   level: ProficiencyLevel;
   maxParticipants: number;
   members: RoomMember[];
+  moderatorIds: string[];
+  kickedMemberIds?: string[];
   status: 'active' | 'full' | 'ended';
   createdAt: string;
 }

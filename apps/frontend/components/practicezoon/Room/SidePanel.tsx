@@ -109,6 +109,7 @@ export default function SidePanel({
   speakingUsers = [],
   unMutedUsers = [],
   currentUserIsHost = false,
+  currentUserIsModerator = false,
 }: {
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (value: boolean) => void;
@@ -116,6 +117,7 @@ export default function SidePanel({
   speakingUsers?: string[];
   unMutedUsers?: string[];
   currentUserIsHost?: boolean;
+  currentUserIsModerator?: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<"Chat" | "Participants" | "Safety" | "Quizzes" | "Activity">("Chat");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -292,6 +294,7 @@ export default function SidePanel({
                 speakingUsers={speakingUsers}
                 unMutedUsers={unMutedUsers}
                 currentUserIsHost={currentUserIsHost}
+                currentUserIsModerator={currentUserIsModerator}
               />
             )}
             {activeTab === "Safety" && <SafetyPanel />}
