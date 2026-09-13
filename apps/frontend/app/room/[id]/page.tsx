@@ -11,6 +11,7 @@ import { useAppSelector } from "@/libs/hooks";
 import { isRoomResponse } from "@/utils/typeGuardsForRoom";
 import RoomEndedModal from "@/components/practicezoon/Room/Modals/RoomEndedModal";
 import { useRoomSocket } from "@/hooks/useRoomSocket";
+import RoomKickedModal from "@/components/practicezoon/Room/Modals/RoomKickedModal";
 
 export default function VideoConference() {
   const [room, setRoom] = useState<RoomType | null>(null);
@@ -18,6 +19,7 @@ export default function VideoConference() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isJoined, setIsJoined] = useState(false);
   const [showRoomEndedModal, setShowRoomEndedModal] = useState(false);
+  const [showRoomKickedModal, setShowRoomKickedModal] = useState(false);
 
   const { id } = useParams();
   const roomId = Array.isArray(id) ? id[0] : (id ?? "");
@@ -41,12 +43,18 @@ export default function VideoConference() {
     });
   };
 
+  const handleKicked = () => {
+    setIsJoined(false);
+    setShowRoomKickedModal(true);
+  };
+
   const { joinRoom, leaveRoom } = useRoomSocket({
     roomId,
     currentUserId: currentUser?.id,
     currentUserName: currentUser?.fullName,
     onUserJoined: handleUserJoined,
     onUserLeft: handleUserLeft,
+    onKicked: handleKicked,
   });
 
   useEffect(() => {
@@ -88,13 +96,22 @@ export default function VideoConference() {
       <BackgroundPattern />
 
       <RoomDetailsModal
-        isOpen={isJoined}
+        isOpen={isJoined || showRoomKickedModal}
         onClose={() => setIsJoined(true)}
         joinRoom={joinRoom}
+        onKicked={handleKicked}
       />
 
       <RoomEndedModal
         isOpen={showRoomEndedModal}
+        onLeave={() => {
+          leaveRoom();
+          window.location.replace("/");
+        }}
+      />
+
+      <RoomKickedModal
+        isOpen={showRoomKickedModal}
         onLeave={() => {
           leaveRoom();
           window.location.replace("/");

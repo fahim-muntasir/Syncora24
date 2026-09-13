@@ -27,18 +27,18 @@ const levelConfig: Record<string, { bg: string; text: string; border: string; do
   Native: { bg: "bg-blue-500/10", text: "text-blue-400", border: "border-blue-500/20", dot: "bg-blue-400" },
 };
 
-const MOCK_MODERATOR_IDS = ["2"];
-
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   joinRoom: () => Promise<void>;
+  onKicked: () => void;
 }
 
 export default function RoomDetailsModal({
   isOpen,
   onClose,
-  joinRoom
+  joinRoom,
+  onKicked,
 }: Props) {
   const [isJoining, setIsJoining] = useState(false);
   const currentUser = useAppSelector((state) => state.auth.user);
@@ -156,6 +156,13 @@ export default function RoomDetailsModal({
         error instanceof Error
           ? error.message
           : "Failed to join room.";
+
+      if (
+        error instanceof Error &&
+        (error as Error & { code?: string }).code === "MEMBER_KICKED"
+      ) {
+        onKicked();
+      }
 
       toast.error(message, {
         id: toastId,
@@ -294,7 +301,7 @@ export default function RoomDetailsModal({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {roomData?.members?.map((member) => {
                 const isHost = member.id === roomData?.hostId;
-                const isModerator = MOCK_MODERATOR_IDS.includes(member.id);
+                const isModerator = roomData?.moderatorIds?.includes(member.id);
 
                 const avatarSvg =
                   member.avatar ||

@@ -19,9 +19,8 @@ import { generateIdenticonAvatar } from "@/utils/generateAvatar";
 import { useAudio } from "@/context/AudioContext";
 import { useAppDispatch, useAppSelector } from "@/libs/hooks";
 import { removeUnMutedUser } from "@/libs/features/room/roomSlice";
+import { socketManager } from "@/libs/socket";
 import VolumeIndicator from "./VolumeIndicator";
-
-const MOCK_MODERATOR_IDS = ["2"];
 
 interface RoomParticipantProps {
   member: RoomMember;
@@ -32,6 +31,7 @@ interface RoomParticipantProps {
   forceMutedUsers: string[];
   currentUserIsHost?: boolean;
   currentUserIsModerator?: boolean;
+  moderatorIds: string[];
   recentlyJoinedIds?: string[];
   muteAll?: boolean;
   muteAllExcludedUsers?: string[];
@@ -46,6 +46,7 @@ export default function RoomParticipant({
   forceMutedUsers,
   currentUserIsHost = false,
   currentUserIsModerator = false,
+  moderatorIds,
   muteAll = false,
   muteAllExcludedUsers = [],
 }: RoomParticipantProps) {
@@ -64,13 +65,18 @@ export default function RoomParticipant({
   const isUnMuted = unMutedUsers.includes(member.id) && !isForceMuted;
 
   const isHost = member.id === hostId;
-  const isModerator = MOCK_MODERATOR_IDS.includes(member.id);
+  const isModerator = moderatorIds.includes(member.id);
 
   const dispatch = useAppDispatch();
 
   const { forceMuteUser, forceUnmuteUser } = useAudio();
 
   const canModerate = (currentUserIsHost || currentUserIsModerator) && !isHost;
+  const currentUserId = useAppSelector((state) => state.auth.user?.id);
+  const canKick =
+    canModerate &&
+    member.id !== currentUserId &&
+    (currentUserIsHost || !isModerator);
   const canHostOnly = currentUserIsHost && !isHost;
 
   const forceMuteHandler = () => {
@@ -82,6 +88,11 @@ export default function RoomParticipant({
       }
       forceMuteUser(roomId, member.id);
     }
+  };
+
+  const kickHandler = () => {
+    if (!canKick) return;
+    socketManager.emit("kick-member", { roomId, targetUserId: member.id });
   };
 
   const roleBorderClass = isHost
@@ -223,12 +234,24 @@ export default function RoomParticipant({
                 )}
               </button>
               <button
+                type="button"
+                onClick={kickHandler}
                 className="p-1.5 rounded-lg bg-red-500/15 backdrop-blur-sm border border-red-500/30 text-red-400 hover:text-red-300 hover:bg-red-500/25 hover:border-red-500/50 transition-all duration-150"
                 title="Remove from room"
               >
                 <UserX size={12} strokeWidth={2} />
               </button>
             </>
+          )}
+          {!canHostOnly && canKick && (
+            <button
+              type="button"
+              onClick={kickHandler}
+              className="p-1.5 rounded-lg bg-red-500/15 backdrop-blur-sm border border-red-500/30 text-red-400 hover:text-red-300 hover:bg-red-500/25 hover:border-red-500/50 transition-all duration-150"
+              title="Remove from room"
+            >
+              <UserX size={12} strokeWidth={2} />
+            </button>
           )}
 
           {!canModerate && !canHostOnly && (

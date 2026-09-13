@@ -41,12 +41,19 @@ export const addMember = async ({
       end
 
       local members = room.members or {}
+      local kickedMemberIds = room.kickedMemberIds or {}
       local userId = ARGV[1]
       local maxParticipants = room.maxParticipants
 
       -- Validate capacity configuration
       if not maxParticipants then
         return {0, "INVALID_ROOM_CAPACITY"}
+      end
+
+      for _, kickedId in ipairs(kickedMemberIds) do
+        if kickedId == userId then
+          return {0, "MEMBER_KICKED"}
+        end
       end
 
       -- Check whether the user is already a member
@@ -91,6 +98,12 @@ export const addMember = async ({
 
         case "ROOM_FULL":
           throw createHttpError(403, "This room is full.");
+
+        case "MEMBER_KICKED":
+          throw createHttpError(
+            403,
+            "You have been removed from this room and cannot join again.",
+          );
 
         case "INVALID_ROOM_CAPACITY":
           throw createHttpError(
