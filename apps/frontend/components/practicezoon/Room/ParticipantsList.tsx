@@ -14,7 +14,11 @@ export default function ParticipantsList({
   speakingUsers,
   unMutedUsers,
   currentUserIsHost,
+<<<<<<< HEAD
   // currentUserIsModerator: _currentUserIsModerator,
+=======
+  currentUserIsModerator: _currentUserIsModerator,
+>>>>>>> 35fccf24388bc9f33c1becbe34b4e5e690b83cd4
 }: {
   room: RoomType | null;
   speakingUsers: string[];
