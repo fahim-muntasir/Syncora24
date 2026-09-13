@@ -1,12 +1,16 @@
 import { Server } from "socket.io";
 import { Server as HttpServer } from "http";
 import { canModerateRoom } from "../utils/canModarateRoom";
-import { removeMember, findSingleItem, endRoom, addMember } from "../lib/room";
+import {
+  removeMember,
+  findSingleItem,
+  endRoom,
+  kickMember,
+} from "../lib/room";
 import {
   muteUser,
   unmuteUser,
   setMuteAll,
-  getRoomModerationState,
 } from "../lib/moderation";
 
 import { handleJoinRoom } from "./handlers/room/joinRoom";
@@ -27,7 +31,11 @@ export const initializeSocket = (server: HttpServer) => {
       "join-room",
       async (
         payload,
-        callback?: (response: { success: boolean; message?: string }) => void,
+        callback?: (response: {
+          success: boolean;
+          message?: string;
+          code?: string;
+        }) => void,
       ) => {
         const response = await handleJoinRoom(io!, socket, payload);
 
@@ -85,6 +93,48 @@ export const initializeSocket = (server: HttpServer) => {
         memberId,
         socketId: socket.id,
       });
+    });
+
+    socket.on("kick-member", async ({ roomId, targetUserId }) => {
+      try {
+        await kickMember({
+          roomId,
+          actorId: socket.data.userId,
+          targetId: targetUserId,
+        });
+
+        const targetSockets = (await io!.in(roomId).fetchSockets()).filter(
+          (targetSocket) => targetSocket.data.userId === targetUserId,
+        );
+
+        for (const targetSocket of targetSockets) {
+          targetSocket.emit("room-member-kicked", {
+            roomId,
+            memberId: targetUserId,
+          });
+          targetSocket.data.roomId = undefined;
+          await targetSocket.leave(roomId);
+          targetSocket.emit("user-left", {
+            roomId,
+            memberId: targetUserId,
+            socketId: targetSocket.id,
+          });
+        }
+
+        io?.emit("removedMember", { roomId, memberId: targetUserId });
+        io?.to(roomId).emit("user-left", {
+          roomId,
+          memberId: targetUserId,
+          socketId: targetSockets[0]?.id,
+        });
+      } catch (error) {
+        socket.emit("moderation-error", {
+          message:
+            error instanceof Error
+              ? error.message
+              : "Unable to kick this member.",
+        });
+      }
     });
 
     socket.on("sendMessage", ({ roomId, message }) => {

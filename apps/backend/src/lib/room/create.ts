@@ -37,6 +37,8 @@ export const createRoom = async ({
       status,
       maxParticipants,
       members: [],
+      moderatorIds: [],
+      kickedMemberIds: [],
     };
 
     // Save as JSON using RedisJSON (JSON.SET key path value)

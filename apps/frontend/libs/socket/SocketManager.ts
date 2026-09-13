@@ -16,6 +16,7 @@ interface PendingListener {
 type SocketResponse = {
   success: boolean;
   message?: string;
+  code?: string;
 };
 
 export class SocketManager {
@@ -114,11 +115,11 @@ export class SocketManager {
         }
 
         if (!response.success) {
-          reject(
-            new Error(
-              response.message ?? "Socket operation failed",
-            ),
-          );
+          const error = new Error(response.message ?? "Socket operation failed") as Error & {
+            code?: string;
+          };
+          error.code = response.code;
+          reject(error);
 
           return;
         }

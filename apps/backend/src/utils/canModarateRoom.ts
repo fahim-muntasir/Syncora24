@@ -15,7 +15,7 @@ async function canModerateRoom(
     return true;
   }
 
-  return room.moderatorIds.includes(userId);
+  return (room.moderatorIds ?? []).includes(userId);
 }
 
 export { canModerateRoom };

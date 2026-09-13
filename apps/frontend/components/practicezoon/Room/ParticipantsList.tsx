@@ -9,18 +9,18 @@ import Image from "next/image";
 import { generateIdenticonAvatar } from "@/utils/generateAvatar";
 import { useAudio } from "@/context/AudioContext";
 
-const MOCK_MODERATOR_IDS = ["2"];
-
 export default function ParticipantsList({
   room,
   speakingUsers,
   unMutedUsers,
   currentUserIsHost,
+  // currentUserIsModerator: _currentUserIsModerator,
 }: {
   room: RoomType | null;
   speakingUsers: string[];
   unMutedUsers: string[];
   currentUserIsHost?: boolean;
+  currentUserIsModerator?: boolean;
 }) {
   const currentUser = useAppSelector((state) => state.auth.user);
 
@@ -48,11 +48,11 @@ export default function ParticipantsList({
 
   const host = room.members.filter((m) => m.id === room.hostId);
 
-  const moderators = room.members.filter((m) => MOCK_MODERATOR_IDS.includes(m.id) && m.id !== room.hostId);
+  const moderatorIds = room.moderatorIds ?? [];
+  const moderators = room.members.filter((m) => moderatorIds.includes(m.id) && m.id !== room.hostId);
+  const members = room.members.filter((m) => m.id !== room.hostId && !moderatorIds.includes(m.id));
 
-  const members = room.members.filter((m) => m.id !== room.hostId && !MOCK_MODERATOR_IDS.includes(m.id));
-
-  const currentUserIsModerator = currentUser?.id ? MOCK_MODERATOR_IDS.includes(currentUser.id) : false;
+  const currentUserIsModerator = currentUser?.id ? moderatorIds.includes(currentUser.id) : false;
 
   const canModerateMember = (memberId: string) => {
     // Cannot moderate yourself
@@ -105,6 +105,14 @@ export default function ParticipantsList({
         }
       );
     }
+  };
+
+  const handleKick = (memberId: string) => {
+    if (!room.id || !canModerateMember(memberId)) return;
+    socketManager.emit("kick-member", {
+      roomId: room.id,
+      targetUserId: memberId,
+    });
   };
 
   const renderMember = (
@@ -196,6 +204,7 @@ export default function ParticipantsList({
             <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity">
               <button
                 type="button"
+                onClick={() => handleKick(member.id)}
                 className="p-1 rounded-md hover:bg-white/[0.08] text-gray-600 hover:text-orange-400 transition-colors"
                 title="Remove"
               >
