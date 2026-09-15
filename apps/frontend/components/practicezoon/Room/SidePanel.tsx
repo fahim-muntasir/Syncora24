@@ -8,7 +8,7 @@ import {
 import { socketManager } from "@/libs/socket/index";
 import { useAppSelector } from "@/libs/hooks";
 import Chat from "./Chat";
-import { IncomingMessage, Message } from "@/types/chat";
+import { ChatItem, IncomingMessage, Message, RoomActivity } from "@/types/chat";
 import { RoomType } from "@/types/room";
 import ParticipantsList from "./ParticipantsList";
 
@@ -120,7 +120,7 @@ export default function SidePanel({
   currentUserIsModerator?: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<"Chat" | "Participants" | "Safety" | "Quizzes" | "Activity">("Chat");
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<ChatItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
 
@@ -188,10 +188,29 @@ export default function SidePanel({
       if (activeTabRef.current !== "Chat" || !sidebarCollapsedRef.current) {
         setUnreadCount((prev) => prev + 1);
       }
-      setMessages((prev) => [...prev, newMsg]);
+      setMessages((prev) => [
+        ...prev,
+        { type: "message", id: newMsg.id, message: newMsg, timestamp: data.timestamp },
+      ]);
     });
     return () => unsub();
   }, [currentUser?.id]);
+
+  useEffect(() => {
+    const unsub = socketManager.on("room-activity", (payload: unknown) => {
+      const activity = payload as RoomActivity;
+      const item: ChatItem = {
+        type: "activity",
+        id: `activity-${activity.type}-${activity.timestamp}`,
+        activity,
+        timestamp: activity.timestamp,
+      };
+      setMessages((prev) => [...prev, item].sort((a, b) => {
+        return a.timestamp - b.timestamp;
+      }));
+    });
+    return () => unsub();
+  }, []);
 
   const icons: { label: typeof activeTab; icon: React.ReactNode; badge?: number; soon?: boolean }[] = [
     { label: "Chat", icon: <MessageSquareText size={20} />, badge: unreadCount },

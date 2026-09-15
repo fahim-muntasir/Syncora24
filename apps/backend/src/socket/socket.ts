@@ -18,6 +18,15 @@ import { handleJoinRoom } from "./handlers/room/joinRoom";
 
 let io: Server | null = null;
 
+const emitRoomActivity = (roomId: string, activity: Record<string, unknown>) => {
+  io?.to(roomId).emit("room-activity", { ...activity, timestamp: Date.now() });
+};
+
+const getMemberName = (
+  room: { members?: { id: string; name: string }[] },
+  userId: string,
+) => room.members?.find((member) => member.id === userId)?.name ?? userId;
+
 export const initializeSocket = (server: HttpServer) => {
   io = new Server(server, {
     cors: {
@@ -76,7 +85,10 @@ export const initializeSocket = (server: HttpServer) => {
     });
 
     socket.on("leave-room", async ({ roomId, memberId }) => {
+      const room = await findSingleItem(roomId);
+      const userName = socket.data.userName ?? getMemberName(room ?? {}, memberId);
       socket.leave(roomId);
+      socket.data.roomId = undefined;
 
       try {
         await removeMember({ roomId, memberId });
@@ -94,14 +106,25 @@ export const initializeSocket = (server: HttpServer) => {
         memberId,
         socketId: socket.id,
       });
+      emitRoomActivity(roomId, { type: "member-left", userId: memberId, userName });
     });
 
     socket.on("kick-member", async ({ roomId, targetUserId }) => {
       try {
+        const room = await findSingleItem(roomId);
+        if (!room) throw new Error("Room not found.");
+        const actorId = socket.data.userId;
         await kickMember({
           roomId,
-          actorId: socket.data.userId,
+          actorId,
           targetId: targetUserId,
+        });
+        emitRoomActivity(roomId, {
+          type: "member-kicked",
+          userId: targetUserId,
+          userName: getMemberName(room, targetUserId),
+          actorId,
+          actorName: socket.data.userName ?? actorId,
         });
 
         const targetSockets = (await io!.in(roomId).fetchSockets()).filter(
@@ -154,6 +177,16 @@ export const initializeSocket = (server: HttpServer) => {
             memberId: targetUserId,
             isModerator: result.isModerator,
           });
+          const room = await findSingleItem(roomId);
+          if (room) {
+            emitRoomActivity(roomId, {
+              type: result.isModerator ? "moderator-promoted" : "moderator-removed",
+              userId: targetUserId,
+              userName: getMemberName(room, targetUserId),
+              actorId: socket.data.userId,
+              actorName: socket.data.userName ?? socket.data.userId,
+            });
+          }
         } catch (error) {
           socket.emit("moderation-error", {
             message:
@@ -208,6 +241,13 @@ export const initializeSocket = (server: HttpServer) => {
 
         // Update everyone else's UI
         io?.to(roomId).emit("member-force-mute-status", result);
+        emitRoomActivity(roomId, {
+          type: "member-muted",
+          userId: targetUserId,
+          userName: getMemberName(room, targetUserId),
+          actorId: moderatorId,
+          actorName: socket.data.userName ?? moderatorId,
+        });
       } catch (error) {
         console.error(error);
       }
@@ -227,6 +267,16 @@ export const initializeSocket = (server: HttpServer) => {
       io?.to(`user:${targetUserId}`).emit("member-force-unmuted", result);
 
       io?.to(roomId).emit("member-force-mute-status", result);
+      const room = await findSingleItem(roomId);
+      if (room) {
+        emitRoomActivity(roomId, {
+          type: "member-unmuted",
+          userId: targetUserId,
+          userName: getMemberName(room, targetUserId),
+          actorId: moderatorId,
+          actorName: socket.data.userName ?? moderatorId,
+        });
+      }
     });
 
     socket.on("moderator-set-mute-all", async ({ roomId, muteAll }) => {
@@ -256,6 +306,11 @@ export const initializeSocket = (server: HttpServer) => {
           roomId,
           muteAll,
           muteAllExcludedUsers,
+        });
+        emitRoomActivity(roomId, {
+          type: muteAll ? "mute-all-enabled" : "mute-all-disabled",
+          actorId: moderatorId,
+          actorName: socket.data.userName ?? moderatorId,
         });
       } catch (error) {
         console.error("Failed to change mute-all state:", error);
@@ -290,6 +345,11 @@ export const initializeSocket = (server: HttpServer) => {
           roomId,
           endedBy: userId,
         });
+        emitRoomActivity(roomId, {
+          type: "room-ended",
+          actorId: userId,
+          actorName: socket.data.userName ?? userId,
+        });
 
         io?.emit("room-ended", {
           roomId,
@@ -318,6 +378,11 @@ export const initializeSocket = (server: HttpServer) => {
         });
 
         io?.to(roomId).emit("user-left", { roomId, memberId, socketId });
+        emitRoomActivity(roomId, {
+          type: "member-left",
+          userId: memberId,
+          userName: socket.data.userName ?? memberId,
+        });
       }
     });
   });
