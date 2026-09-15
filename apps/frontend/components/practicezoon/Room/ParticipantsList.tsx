@@ -36,6 +36,9 @@ export default function ParticipantsList({
     (state) => state.room.muteAllExcludedUsers
   );
 
+  const moderatorIds = useAppSelector((state) => state.room.moderatorIds);
+  const currentUserIsModerator = currentUser?.id ? moderatorIds.includes(currentUser.id) : false;
+
   const { toggleMute } = useAudio();
 
   if (!room) {
@@ -48,11 +51,8 @@ export default function ParticipantsList({
 
   const host = room.members.filter((m) => m.id === room.hostId);
 
-  const moderatorIds = useAppSelector((state) => state.room.moderatorIds);
   const moderators = room.members.filter((m) => moderatorIds.includes(m.id) && m.id !== room.hostId);
   const members = room.members.filter((m) => m.id !== room.hostId && !moderatorIds.includes(m.id));
-
-  const currentUserIsModerator = currentUser?.id ? moderatorIds.includes(currentUser.id) : false;
 
   const canModerateMember = (memberId: string) => {
     // Cannot moderate yourself
