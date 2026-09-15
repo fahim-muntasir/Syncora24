@@ -41,7 +41,6 @@ export const addMember = async ({
       end
 
       local members = room.members or {}
-      local kickedMemberIds = room.kickedMemberIds or {}
       local userId = ARGV[1]
       local maxParticipants = room.maxParticipants
 
@@ -50,10 +49,8 @@ export const addMember = async ({
         return {0, "INVALID_ROOM_CAPACITY"}
       end
 
-      for _, kickedId in ipairs(kickedMemberIds) do
-        if kickedId == userId then
-          return {0, "MEMBER_KICKED"}
-        end
+      if redis.call("SISMEMBER", KEYS[2], userId) == 1 then
+        return {0, "MEMBER_KICKED"}
       end
 
       -- Check whether the user is already a member
@@ -81,8 +78,9 @@ export const addMember = async ({
 
       return {1, "MEMBER_ADDED"}
       `,
-      1,
+      2,
       roomKey,
+      `room:${roomId}:kicked-members`,
       member.id,
       JSON.stringify(member),
     )) as [number, string];

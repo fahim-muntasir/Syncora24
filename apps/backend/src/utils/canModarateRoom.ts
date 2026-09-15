@@ -1,21 +1,22 @@
-import { findSingleItem } from "../lib/room";
+import redis from "../redis";
 
 async function canModerateRoom(
   roomId: string,
   userId: string
 ): Promise<boolean> {
 
-  const room = await findSingleItem(roomId);
+  const roomJson = await redis.call("JSON.GET", `room:${roomId}`, "$");
 
-  if (!room) {
+  if (!roomJson || roomJson === "null") {
     return false;
   }
 
+  const room = JSON.parse(roomJson as string)[0];
   if (room.hostId === userId) {
     return true;
   }
 
-  return (room.moderatorIds ?? []).includes(userId);
+  return (await redis.sismember(`room:${roomId}:moderators`, userId)) === 1;
 }
 
 export { canModerateRoom };

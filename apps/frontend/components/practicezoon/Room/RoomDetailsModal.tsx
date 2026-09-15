@@ -51,6 +51,7 @@ export default function RoomDetailsModal({
   const level = levelConfig[roomData?.level as keyof typeof levelConfig] ?? levelConfig.Beginner;
   const spotsLeft = (roomData?.maxParticipants ?? 0) - (roomData?.members?.length ?? 0);
   const dispatch = useAppDispatch();
+  const moderatorIds = useAppSelector((state) => state.room.moderatorIds);
 
   useEffect(() => {
     const unsubJoined = socketManager.on(
@@ -301,7 +302,7 @@ export default function RoomDetailsModal({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {roomData?.members?.map((member) => {
                 const isHost = member.id === roomData?.hostId;
-                const isModerator = roomData?.moderatorIds?.includes(member.id);
+                const isModerator = moderatorIds.includes(member.id);
 
                 const avatarSvg =
                   member.avatar ||

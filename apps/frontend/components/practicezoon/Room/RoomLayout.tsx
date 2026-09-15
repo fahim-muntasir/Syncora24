@@ -20,10 +20,10 @@ export default function RoomLayout({
   setSidebarCollapsed: (collapsed: boolean) => void;
 }) {
   const currentUser = useAppSelector((state) => state.auth.user);
-  const { unMutedUsers, speakingUsers } = useAppSelector((state) => state.room);
+  const { unMutedUsers, speakingUsers, moderatorIds } = useAppSelector((state) => state.room);
   const currentUserIsHost = Boolean(room && currentUser && room.hostId === currentUser.id);
   const currentUserIsModerator = Boolean(
-    room && currentUser && (room.moderatorIds ?? []).includes(currentUser.id),
+    room && currentUser && moderatorIds.includes(currentUser.id),
   );
   const raisedHandCount = 0;
 

@@ -6,6 +6,8 @@ interface RoomState {
   speakingUsers: string[];
   unMutedUsers: string[];
   forceMutedUsers: string[];
+  moderatorIds: string[];
+  kickedMemberIds: string[];
   muteAll: boolean;
   muteAllExcludedUsers: string[];
   volumeLevels: Record<string, number>;
@@ -17,6 +19,8 @@ const initialState: RoomState = {
   speakingUsers: [],
   unMutedUsers: [],
   forceMutedUsers: [],
+  moderatorIds: [],
+  kickedMemberIds: [],
   muteAll: false,
   muteAllExcludedUsers: [],
   volumeLevels: {},
@@ -77,6 +81,21 @@ const roomSlice = createSlice({
     clearForceMutedUsers: (state) => {
       state.forceMutedUsers = [];
     },
+    setModeratorIds: (state, action: PayloadAction<string[]>) => {
+      state.moderatorIds = action.payload;
+    },
+    setKickedMemberIds: (state, action: PayloadAction<string[]>) => {
+      state.kickedMemberIds = action.payload;
+    },
+    addKickedMemberId: (state, action: PayloadAction<string>) => {
+      if (!state.kickedMemberIds.includes(action.payload)) state.kickedMemberIds.push(action.payload);
+    },
+    addModeratorId: (state, action: PayloadAction<string>) => {
+      if (!state.moderatorIds.includes(action.payload)) state.moderatorIds.push(action.payload);
+    },
+    removeModeratorId: (state, action: PayloadAction<string>) => {
+      state.moderatorIds = state.moderatorIds.filter((id) => id !== action.payload);
+    },
     setMuteAll: (state, action: PayloadAction<boolean>) => {
       state.muteAll = action.payload;
     },
@@ -115,6 +134,11 @@ export const {
   setForceMutedUser,
   removeForceMutedUser,
   clearForceMutedUsers,
+  setModeratorIds,
+  setKickedMemberIds,
+  addKickedMemberId,
+  addModeratorId,
+  removeModeratorId,
   setForceMutedUsers,
   setMuteAll,
   clearUnMutedUsersExcept,

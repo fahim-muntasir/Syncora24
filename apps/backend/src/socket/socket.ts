@@ -6,6 +6,7 @@ import {
   findSingleItem,
   endRoom,
   kickMember,
+  setModeratorRole,
 } from "../lib/room";
 import {
   muteUser,
@@ -136,6 +137,33 @@ export const initializeSocket = (server: HttpServer) => {
         });
       }
     });
+
+    socket.on(
+      "set-moderator-role",
+      async ({ roomId, targetUserId, isModerator }) => {
+        try {
+          const result = await setModeratorRole({
+            roomId,
+            actorId: socket.data.userId,
+            targetId: targetUserId,
+            isModerator: Boolean(isModerator),
+          });
+
+          io?.to(roomId).emit("room-moderator-updated", {
+            roomId,
+            memberId: targetUserId,
+            isModerator: result.isModerator,
+          });
+        } catch (error) {
+          socket.emit("moderation-error", {
+            message:
+              error instanceof Error
+                ? error.message
+                : "Unable to update moderator role.",
+          });
+        }
+      },
+    );
 
     socket.on("sendMessage", ({ roomId, message }) => {
       const senderId = socket.data.userId;
