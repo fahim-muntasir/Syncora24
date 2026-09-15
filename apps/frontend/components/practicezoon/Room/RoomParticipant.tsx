@@ -95,6 +95,15 @@ export default function RoomParticipant({
     socketManager.emit("kick-member", { roomId, targetUserId: member.id });
   };
 
+  const moderatorRoleHandler = () => {
+    if (!currentUserIsHost || isHost) return;
+    socketManager.emit("set-moderator-role", {
+      roomId,
+      targetUserId: member.id,
+      isModerator: !isModerator,
+    });
+  };
+
   const roleBorderClass = isHost
     ? "ring-amber-500/40"
     : isModerator
@@ -224,6 +233,8 @@ export default function RoomParticipant({
           {canHostOnly && (
             <>
               <button
+                type="button"
+                onClick={moderatorRoleHandler}
                 className="p-1.5 rounded-lg bg-blue-500/15 backdrop-blur-sm border border-blue-500/30 text-blue-400 hover:text-blue-300 hover:bg-blue-500/25 hover:border-blue-500/50 transition-all duration-150"
                 title={isModerator ? "Remove moderator" : "Make moderator"}
               >

@@ -7,7 +7,13 @@ import RoomLayout from "@/components/practicezoon/Room/RoomLayout";
 import { BackgroundPattern } from "@/components/background/BackgroundPattern";
 import RoomDetailsModal from "@/components/practicezoon/Room/RoomDetailsModal";
 import { socketManager } from "@/libs/socket/index";
-import { useAppSelector } from "@/libs/hooks";
+import { useAppDispatch, useAppSelector } from "@/libs/hooks";
+import {
+  addModeratorId,
+  removeModeratorId,
+  setModeratorIds,
+  setKickedMemberIds,
+} from "@/libs/features/room/roomSlice";
 import { isRoomResponse } from "@/utils/typeGuardsForRoom";
 import RoomEndedModal from "@/components/practicezoon/Room/Modals/RoomEndedModal";
 import { useRoomSocket } from "@/hooks/useRoomSocket";
@@ -27,6 +33,7 @@ export default function VideoConference() {
     refetchOnMountOrArgChange: true,
   });
   const currentUser = useAppSelector((state) => state.auth.user);
+  const dispatch = useAppDispatch();
 
   const handleUserJoined = ({ user }: { user: { id: string; name: string } }) => {
     setRoom((prev) => {
@@ -60,6 +67,55 @@ export default function VideoConference() {
   useEffect(() => {
     if (data && isSuccess && isRoomResponse(data)) setRoom(data.data);
   }, [data, isSuccess]);
+
+  useEffect(() => {
+    const unsubscribe = socketManager.on(
+      "room-moderator-updated",
+      (payload: unknown) => {
+        const event = payload as {
+          roomId: string;
+          memberId: string;
+          isModerator: boolean;
+        };
+
+        if (event.roomId !== roomId) return;
+
+        setRoom((previousRoom) => {
+          if (!previousRoom) return previousRoom;
+
+          if (event.isModerator) {
+            dispatch(addModeratorId(event.memberId));
+          } else {
+            dispatch(removeModeratorId(event.memberId));
+          }
+
+          return previousRoom;
+        });
+      },
+    );
+
+    return unsubscribe;
+  }, [roomId, dispatch]);
+
+  useEffect(() => {
+    const unsubscribe = socketManager.on(
+      "room-moderator-state",
+      (payload: unknown) => {
+        const event = payload as {
+          roomId: string;
+          moderatorIds: string[];
+          kickedMemberIds: string[];
+        };
+
+        if (event.roomId !== roomId) return;
+
+        dispatch(setModeratorIds(event.moderatorIds ?? []));
+        dispatch(setKickedMemberIds(event.kickedMemberIds ?? []));
+      },
+    );
+
+    return unsubscribe;
+  }, [roomId, dispatch]);
 
   // Emit leave on tab/window close
   useEffect(() => {
@@ -96,7 +152,7 @@ export default function VideoConference() {
       <BackgroundPattern />
 
       <RoomDetailsModal
-        isOpen={isJoined || showRoomKickedModal}
+        isOpen={isJoined && !showRoomKickedModal}
         onClose={() => setIsJoined(true)}
         joinRoom={joinRoom}
         onKicked={handleKicked}

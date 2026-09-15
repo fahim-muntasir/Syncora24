@@ -8,6 +8,9 @@ import {
   removeForceMutedUser,
   setMuteAll,
   setMuteAllExcludedUsers,
+  setModeratorIds,
+  setKickedMemberIds,
+  addKickedMemberId,
   clearUnMutedUsersExcept,
   setVolumeLevel,
   removeVolumeLevel,
@@ -143,9 +146,10 @@ export function useRoomSocket({
       peerManagerRef.current?.closeAll();
       peerManagerRef.current = null;
       hasJoinedRef.current = false;
+      dispatch(addKickedMemberId(data.memberId));
       onKicked?.();
     });
-  }, [roomId, currentUserId, onKicked, stopAudio]);
+  }, [roomId, currentUserId, onKicked, stopAudio, dispatch]);
 
   // ── Leave ───────────────────────────────────────────────────────────────────
   const leaveRoom = useCallback(() => {
@@ -341,11 +345,15 @@ export function useRoomSocket({
           forceMutedUsers,
           muteAll,
           muteAllExcludedUsers,
+          moderatorIds,
+          kickedMemberIds,
         } = payload as {
           roomId: string;
           forceMutedUsers: string[];
           muteAll: boolean;
           muteAllExcludedUsers: string[];
+          moderatorIds: string[];
+          kickedMemberIds: string[];
         };
 
         if (eventRoomId !== roomId) {
@@ -355,6 +363,8 @@ export function useRoomSocket({
         dispatch(setForceMutedUsers(forceMutedUsers ?? []));
         dispatch(setMuteAll(muteAll ?? false));
         dispatch(setMuteAllExcludedUsers(muteAllExcludedUsers ?? []));
+        dispatch(setModeratorIds(moderatorIds ?? []));
+        dispatch(setKickedMemberIds(kickedMemberIds ?? []));
       },
     );
 

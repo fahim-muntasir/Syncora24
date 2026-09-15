@@ -48,7 +48,7 @@ export default function ParticipantsList({
 
   const host = room.members.filter((m) => m.id === room.hostId);
 
-  const moderatorIds = room.moderatorIds ?? [];
+  const moderatorIds = useAppSelector((state) => state.room.moderatorIds);
   const moderators = room.members.filter((m) => moderatorIds.includes(m.id) && m.id !== room.hostId);
   const members = room.members.filter((m) => m.id !== room.hostId && !moderatorIds.includes(m.id));
 

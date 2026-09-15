@@ -20,16 +20,13 @@ export const kickMember = async ({
     end
 
     local room = cjson.decode(roomJson)[1]
-    local moderators = room.moderatorIds or {}
     local members = room.members or {}
     local actorIsHost = room.hostId == ARGV[1]
     local actorIsModerator = false
     local targetIsModerator = false
 
-    for _, id in ipairs(moderators) do
-      if id == ARGV[1] then actorIsModerator = true end
-      if id == ARGV[2] then targetIsModerator = true end
-    end
+    actorIsModerator = redis.call("SISMEMBER", KEYS[2], ARGV[1]) == 1
+    targetIsModerator = redis.call("SISMEMBER", KEYS[2], ARGV[2]) == 1
 
     if not actorIsHost and not actorIsModerator then
       return {0, "NOT_ALLOWED"}
@@ -56,24 +53,15 @@ export const kickMember = async ({
     end
 
     redis.call("JSON.DEL", KEYS[1], "$.members[" .. memberIndex .. "]")
-    local kickedIds = room.kickedMemberIds or {}
-    local alreadyKicked = false
-    for _, id in ipairs(kickedIds) do
-      if id == ARGV[2] then alreadyKicked = true end
-    end
-    if not alreadyKicked then
-      if not room.kickedMemberIds then
-        redis.call("JSON.SET", KEYS[1], "$.kickedMemberIds", "[]")
-      end
-      redis.call("JSON.ARRAPPEND", KEYS[1], "$.kickedMemberIds", ARGV[3])
-    end
+    redis.call("SADD", KEYS[3], ARGV[2])
     return {1, "MEMBER_KICKED"}
     `,
-    1,
+    3,
     `room:${roomId}`,
+    `room:${roomId}:moderators`,
+    `room:${roomId}:kicked-members`,
     actorId,
     targetId,
-    JSON.stringify(targetId),
   )) as [number, string];
 
   const [success, code] = result;
