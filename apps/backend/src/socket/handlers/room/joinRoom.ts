@@ -68,6 +68,9 @@ export const handleJoinRoom = async (
       roomId,
       moderatorIds: moderationState.moderatorIds,
       kickedMemberIds: moderationState.kickedMemberIds,
+      cameraEnabled: moderationState.cameraEnabled,
+      cameraDisabledMemberIds: moderationState.cameraDisabledMemberIds,
+      cameraAllowedMemberIds: moderationState.cameraAllowedMemberIds,
     });
 
     // Send initial state to the joining user.

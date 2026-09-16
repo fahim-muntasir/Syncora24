@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { RoomMember } from "@/types/room";
 import Image from "next/image";
 import { useParams } from "next/navigation";
@@ -14,6 +14,8 @@ import {
   UserMinus,
   ShieldPlus,
   MoreHorizontal,
+  Video,
+  VideoOff,
 } from "lucide-react";
 import { generateIdenticonAvatar } from "@/utils/generateAvatar";
 import { useAudio } from "@/context/AudioContext";
@@ -35,6 +37,14 @@ interface RoomParticipantProps {
   recentlyJoinedIds?: string[];
   muteAll?: boolean;
   muteAllExcludedUsers?: string[];
+  currentUserId?: string;
+  videoStream: MediaStream | null;
+  cameraEnabled: boolean;
+  isVideoEnabled: boolean;
+  onStartVideo: () => Promise<void>;
+  onStopVideo: () => void;
+  cameraDisabled: boolean;
+  onToggleMemberCamera: (enabled: boolean) => void;
 }
 
 export default function RoomParticipant({
@@ -49,6 +59,14 @@ export default function RoomParticipant({
   moderatorIds,
   muteAll = false,
   muteAllExcludedUsers = [],
+  currentUserId,
+  videoStream,
+  cameraEnabled,
+  isVideoEnabled,
+  onStartVideo,
+  onStopVideo,
+  cameraDisabled,
+  onToggleMemberCamera,
 }: RoomParticipantProps) {
   const volume = useAppSelector((state) => state.room.volumeLevels[member.id] ?? 0);
 
@@ -70,9 +88,14 @@ export default function RoomParticipant({
   const dispatch = useAppDispatch();
 
   const { forceMuteUser, forceUnmuteUser } = useAudio();
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (!videoRef.current) return;
+    videoRef.current.srcObject = videoStream;
+  }, [videoStream]);
 
   const canModerate = (currentUserIsHost || currentUserIsModerator) && !isHost;
-  const currentUserId = useAppSelector((state) => state.auth.user?.id);
   const canKick =
     canModerate &&
     member.id !== currentUserId &&
@@ -136,7 +159,17 @@ export default function RoomParticipant({
         }}
       />
 
-      <div className="absolute inset-0 flex items-center justify-center">
+      {videoStream && (
+        <video
+          ref={videoRef}
+          autoPlay
+          muted={member.id === currentUserId}
+          playsInline
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+      )}
+
+      {!videoStream && <div className="absolute inset-0 flex items-center justify-center">
         {member.avatar ? (
           <div
             className={`relative rounded-full ${isSpeaking && isUnMuted
@@ -172,7 +205,7 @@ export default function RoomParticipant({
             />
           </div>
         )}
-      </div>
+      </div>}
 
       <div className="absolute top-3 left-3 z-10">
         {isUnMuted ? (
@@ -196,6 +229,47 @@ export default function RoomParticipant({
 
       <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5">
         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          {member.id === currentUserId && (
+            <button
+              type="button"
+              disabled={
+                !isVideoEnabled && (!cameraEnabled || cameraDisabled)
+              }
+              onClick={isVideoEnabled ? onStopVideo : onStartVideo}
+              className={`p-1.5 rounded-lg backdrop-blur-sm border transition-all duration-150 ${
+                !isVideoEnabled && (!cameraEnabled || cameraDisabled)
+                  ? "bg-white/[0.04] border-white/[0.08] text-gray-600 cursor-not-allowed"
+                  : isVideoEnabled
+                    ? "bg-green-500/15 border-green-500/30 text-green-400"
+                    : "bg-black/50 border-white/[0.12] text-gray-400 hover:text-white hover:bg-black/70"
+              }`}
+              title={
+                !isVideoEnabled && !cameraEnabled
+                  ? "Camera disabled by room moderator"
+                  : !isVideoEnabled && cameraDisabled
+                    ? "Camera disabled for this member"
+                  : isVideoEnabled
+                    ? "Stop camera"
+                    : "Start camera"
+              }
+            >
+              {isVideoEnabled ? <Video size={12} /> : <VideoOff size={12} />}
+            </button>
+          )}
+          {canModerate && member.id !== currentUserId && (
+            <button
+              type="button"
+              onClick={() => onToggleMemberCamera(cameraDisabled)}
+              className={`p-1.5 rounded-lg backdrop-blur-sm border transition-all duration-150 ${
+                cameraDisabled
+                  ? "bg-green-500/15 border-green-500/30 text-green-400"
+                  : "bg-red-500/15 border-red-500/30 text-red-400"
+              }`}
+              title={cameraDisabled ? "Enable member camera" : "Disable member camera"}
+            >
+              {cameraDisabled ? <Video size={12} /> : <VideoOff size={12} />}
+            </button>
+          )}
           <button
             className="p-1.5 rounded-lg bg-black/50 backdrop-blur-sm border border-white/[0.12] text-gray-400 hover:text-white hover:bg-black/70 hover:border-white/20 transition-all duration-150"
             title="Pin"

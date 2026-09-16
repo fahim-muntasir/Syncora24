@@ -119,6 +119,28 @@ export type RoomActivity =
       actorId: string;
       actorName: string;
       timestamp: number;
+    }
+  | {
+      type: "camera-started";
+      userId: string;
+      userName: string;
+      timestamp: number;
+    }
+  | {
+      type: "camera-stopped";
+      userId: string;
+      userName: string;
+      timestamp: number;
+    }
+  | {
+      type: "camera-permission-changed";
+      userId: string;
+      userName: string;
+      actorId: string;
+      actorName: string;
+      enabled: boolean;
+      scope: "member" | "room";
+      timestamp: number;
     };
 
 export type ChatItem =

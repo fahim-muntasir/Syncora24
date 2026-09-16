@@ -14,9 +14,17 @@ import {
   clearUnMutedUsersExcept,
   setVolumeLevel,
   removeVolumeLevel,
+  setCameraEnabled,
+  setCameraDisabledMemberIds,
+  addCameraDisabledMemberId,
+  removeCameraDisabledMemberId,
+  setCameraAllowedMemberIds,
+  addCameraAllowedMemberId,
+  removeCameraAllowedMemberId,
 } from "@/libs/features/room/roomSlice";
-import { useAppDispatch } from "@/libs/hooks";
+import { useAppDispatch, useAppSelector } from "@/libs/hooks";
 import { useLazyGetIceServersQuery } from "@/libs/features/webrtc/webrtcApiSlice";
+import toast from "react-hot-toast";
 
 export interface RoomUser {
   id: string;
@@ -27,6 +35,7 @@ export interface UseRoomSocketOptions {
   roomId: string | undefined;
   currentUserId: string | undefined;
   currentUserName?: string;
+  isPrivileged?: boolean;
   onUserJoined?: (data: { user: RoomUser; socketId: string }) => void;
   onUserLeft?: (data: { memberId: string; socketId: string }) => void;
   onKicked?: () => void;
@@ -36,23 +45,93 @@ export interface UseRoomSocketReturn {
   joinRoom: () => Promise<void>;
   leaveRoom: () => void;
   hasJoined: boolean;
+  localVideoStream: MediaStream | null;
+  remoteVideoStreams: Record<string, MediaStream>;
+  isVideoEnabled: boolean;
+  startVideo: () => Promise<void>;
+  stopVideo: () => void;
 }
 
 export function useRoomSocket({
   roomId,
   currentUserId,
   currentUserName,
+  isPrivileged = false,
   onUserJoined,
   onUserLeft,
   onKicked,
 }: UseRoomSocketOptions): UseRoomSocketReturn {
   const { startAudio, stopAudio, localStreamRef, streamVersion } = useAudio();
   const dispatch = useAppDispatch();
+  const cameraEnabled = useAppSelector((state) => state.room.cameraEnabled);
+  const cameraDisabledMemberIds = useAppSelector(
+    (state) => state.room.cameraDisabledMemberIds,
+  );
+  const cameraAllowedMemberIds = useAppSelector(
+    (state) => state.room.cameraAllowedMemberIds,
+  );
 
   const hasJoinedRef = useRef(false);
   const peerManagerRef = useRef<PeerManager | null>(null);
   const socketToUserRef = useRef<Map<string, string>>(new Map());
   const joiningRef = useRef(false);
+  const videoStreamRef = useRef<MediaStream | null>(null);
+  const [localVideoStream, setLocalVideoStream] = useState<MediaStream | null>(null);
+  const [remoteVideoStreams, setRemoteVideoStreams] = useState<Record<string, MediaStream>>({});
+  const [isVideoEnabled, setIsVideoEnabled] = useState(false);
+  const getLocalMediaStream = useCallback(() => {
+    const tracks = [
+      ...(localStreamRef.current?.getTracks() ?? []),
+      ...(videoStreamRef.current?.getTracks() ?? []),
+    ];
+    return tracks.length > 0 ? new MediaStream(tracks) : null;
+  }, [localStreamRef]);
+
+  const stopVideo = useCallback(() => {
+    videoStreamRef.current?.getTracks().forEach((track) => track.stop());
+    videoStreamRef.current = null;
+    setLocalVideoStream(null);
+    setIsVideoEnabled(false);
+    if (roomId) {
+      socketManager.emit("camera-state", { roomId, cameraEnabled: false });
+    }
+    void peerManagerRef.current?.removeTracksByKind("video");
+  }, [roomId]);
+
+  const startVideo = useCallback(async () => {
+    if (
+      !roomId ||
+      !currentUserId ||
+      (!cameraEnabled &&
+        !isPrivileged &&
+        !cameraAllowedMemberIds.includes(currentUserId)) ||
+      cameraDisabledMemberIds.includes(currentUserId) ||
+      videoStreamRef.current
+    ) return;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      videoStreamRef.current = stream;
+      setLocalVideoStream(stream);
+      setIsVideoEnabled(true);
+      socketManager.emit("camera-state", { roomId, cameraEnabled: true });
+      await peerManagerRef.current?.renegotiateAll(stream);
+    } catch (error) {
+      console.error("[useRoomSocket] Failed to start camera:", error);
+      toast.error(
+        error instanceof DOMException && error.name === "NotAllowedError"
+          ? "Camera permission was denied."
+          : "Unable to start your camera.",
+      );
+    }
+  }, [
+    cameraDisabledMemberIds,
+    cameraAllowedMemberIds,
+    cameraEnabled,
+    currentUserId,
+    isPrivileged,
+    roomId,
+  ]);
 
   const [getIceServers] = useLazyGetIceServersQuery();
 
@@ -80,6 +159,21 @@ export function useRoomSocket({
       };
 
       peerManagerRef.current = new PeerManager(roomId, peerConfiguration);
+      peerManagerRef.current.on("track", (socketId, event) => {
+        if (!event || event.track.kind !== "video") return;
+        const stream = event.streams[0];
+        const userId = socketToUserRef.current.get(socketId);
+        if (!stream || !userId) return;
+
+        setRemoteVideoStreams((previous) => ({ ...previous, [userId]: stream }));
+        event.track.onended = () => {
+          setRemoteVideoStreams((previous) => {
+            const next = { ...previous };
+            delete next[userId];
+            return next;
+          });
+        };
+      });
 
       peerManagerRef.current.on("volume", (socketId, _event, volume = 0) => {
         const userId = socketToUserRef.current.get(socketId);
@@ -118,6 +212,7 @@ export function useRoomSocket({
       peerManagerRef.current = null;
 
       stopAudio(currentUserId);
+      stopVideo();
 
       hasJoinedRef.current = false;
 
@@ -132,6 +227,7 @@ export function useRoomSocket({
     getIceServers,
     startAudio,
     stopAudio,
+    stopVideo,
     dispatch,
   ]);
 
@@ -143,13 +239,14 @@ export function useRoomSocket({
       if (data.roomId !== roomId || data.memberId !== currentUserId) return;
 
       stopAudio(currentUserId);
+      stopVideo();
       peerManagerRef.current?.closeAll();
       peerManagerRef.current = null;
       hasJoinedRef.current = false;
       dispatch(addKickedMemberId(data.memberId));
       onKicked?.();
     });
-  }, [roomId, currentUserId, onKicked, stopAudio, dispatch]);
+  }, [roomId, currentUserId, onKicked, stopAudio, stopVideo, dispatch]);
 
   // ── Leave ───────────────────────────────────────────────────────────────────
   const leaveRoom = useCallback(() => {
@@ -157,12 +254,13 @@ export function useRoomSocket({
 
     socketManager.emit("leave-room", { roomId, memberId: currentUserId });
     stopAudio(currentUserId);
+    stopVideo();
     peerManagerRef.current?.closeAll();
     peerManagerRef.current = null;
     hasJoinedRef.current = false;
 
     console.log(`[useRoomSocket] Left room ${roomId}`);
-  }, [roomId, currentUserId, stopAudio]);
+  }, [roomId, currentUserId, stopAudio, stopVideo]);
 
   // ── user-joined / user-left ─────────────────────────────────────────────────
 
@@ -220,12 +318,12 @@ export function useRoomSocket({
 
         const pc = peerManagerRef.current.createConnection(
           socketId,
-          localStreamRef.current,
+          getLocalMediaStream(),
         );
 
         const offer = await pc.createOffer({
           offerToReceiveAudio: true,
-          offerToReceiveVideo: false,
+          offerToReceiveVideo: true,
         });
 
         await pc.setLocalDescription(offer);
@@ -243,7 +341,15 @@ export function useRoomSocket({
         socketId: string;
       };
 
+      const userId = socketToUserRef.current.get(socketId);
       socketToUserRef.current.delete(socketId);
+      if (userId) {
+        setRemoteVideoStreams((previous) => {
+          const next = { ...previous };
+          delete next[userId];
+          return next;
+        });
+      }
 
       dispatch(removeVolumeLevel(memberId));
 
@@ -262,7 +368,7 @@ export function useRoomSocket({
       unsubJoined();
       unsubLeft();
     };
-  }, [roomId, onUserJoined, onUserLeft, dispatch, streamVersion]);
+  }, [roomId, onUserJoined, onUserLeft, dispatch, streamVersion, getLocalMediaStream]);
 
   // ── WebRTC signaling ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -277,7 +383,7 @@ export function useRoomSocket({
       await peerManagerRef.current?.handleOffer(
         from,
         offer,
-        localStreamRef.current,
+        getLocalMediaStream(),
       );
     });
 
@@ -306,7 +412,7 @@ export function useRoomSocket({
       unsubAnswer();
       unsubIce();
     };
-  }, [roomId, streamVersion]);
+  }, [roomId, streamVersion, getLocalMediaStream]);
 
   // streamVersion is real React state, so this effect correctly fires when
   // the user unmutes for the first time and localStreamRef.current is set.
@@ -326,13 +432,16 @@ export function useRoomSocket({
   // ── Cleanup if unmounted without joining ────────────────────────────────────
   useEffect(() => {
     return () => {
+      stopVideo();
       if (!hasJoinedRef.current) {
-        if (currentUserId) stopAudio(currentUserId);
+        if (currentUserId) {
+          stopAudio(currentUserId);
+        }
         peerManagerRef.current?.closeAll();
         peerManagerRef.current = null;
       }
     };
-  }, [currentUserId, stopAudio]);
+  }, [currentUserId, stopAudio, stopVideo]);
 
   useEffect(() => {
     if (!roomId) return;
@@ -347,6 +456,9 @@ export function useRoomSocket({
           muteAllExcludedUsers,
           moderatorIds,
           kickedMemberIds,
+          cameraEnabled,
+          cameraDisabledMemberIds,
+          cameraAllowedMemberIds,
         } = payload as {
           roomId: string;
           forceMutedUsers: string[];
@@ -354,6 +466,9 @@ export function useRoomSocket({
           muteAllExcludedUsers: string[];
           moderatorIds: string[];
           kickedMemberIds: string[];
+          cameraEnabled: boolean;
+          cameraDisabledMemberIds: string[];
+          cameraAllowedMemberIds: string[];
         };
 
         if (eventRoomId !== roomId) {
@@ -365,11 +480,100 @@ export function useRoomSocket({
         dispatch(setMuteAllExcludedUsers(muteAllExcludedUsers ?? []));
         dispatch(setModeratorIds(moderatorIds ?? []));
         dispatch(setKickedMemberIds(kickedMemberIds ?? []));
+        dispatch(setCameraEnabled(cameraEnabled ?? true));
+        dispatch(setCameraDisabledMemberIds(cameraDisabledMemberIds ?? []));
+        dispatch(setCameraAllowedMemberIds(cameraAllowedMemberIds ?? []));
       },
     );
 
     return unsubscribe;
   }, [roomId, dispatch]);
+
+  useEffect(() => {
+    if (
+      cameraEnabled ||
+      isPrivileged ||
+      cameraAllowedMemberIds.includes(currentUserId ?? "")
+    ) return;
+    stopVideo();
+  }, [
+    cameraAllowedMemberIds,
+    cameraEnabled,
+    currentUserId,
+    isPrivileged,
+    stopVideo,
+  ]);
+
+  useEffect(() => {
+    if (!roomId) return;
+    return socketManager.on("room-camera-state", (payload: unknown) => {
+      const event = payload as { roomId: string; cameraEnabled: boolean };
+      if (event.roomId !== roomId) return;
+      dispatch(setCameraEnabled(event.cameraEnabled));
+      if (event.cameraEnabled) {
+        dispatch(setCameraDisabledMemberIds([]));
+        dispatch(setCameraAllowedMemberIds([]));
+      }
+    });
+  }, [roomId, dispatch]);
+
+  useEffect(() => {
+    if (!roomId) return;
+    return socketManager.on("room-camera-force-stop", (payload: unknown) => {
+      const event = payload as { roomId: string };
+      if (event.roomId !== roomId || isPrivileged) return;
+      stopVideo();
+    });
+  }, [isPrivileged, roomId, stopVideo]);
+
+  useEffect(() => {
+    if (!roomId) return;
+    return socketManager.on("room-member-camera-state", (payload: unknown) => {
+      const event = payload as {
+        roomId: string;
+        memberId: string;
+        cameraEnabled: boolean;
+      };
+      if (event.roomId !== roomId) return;
+      dispatch(
+        event.cameraEnabled
+          ? removeCameraDisabledMemberId(event.memberId)
+          : addCameraDisabledMemberId(event.memberId),
+      );
+      dispatch(
+        event.cameraEnabled
+          ? addCameraAllowedMemberId(event.memberId)
+          : removeCameraAllowedMemberId(event.memberId),
+      );
+      if (!event.cameraEnabled && event.memberId === currentUserId) {
+        stopVideo();
+      }
+      if (!event.cameraEnabled) {
+        setRemoteVideoStreams((previous) => {
+          const next = { ...previous };
+          delete next[event.memberId];
+          return next;
+        });
+      }
+    });
+  }, [currentUserId, dispatch, roomId, stopVideo]);
+
+  useEffect(() => {
+    if (!roomId) return;
+    return socketManager.on("camera-state", (payload: unknown) => {
+      const event = payload as {
+        roomId: string;
+        userId: string;
+        cameraEnabled: boolean;
+      };
+      if (event.roomId !== roomId || event.cameraEnabled) return;
+      setRemoteVideoStreams((previous) => {
+        const next = { ...previous };
+        delete next[event.userId];
+        return next;
+      });
+    });
+  }, [roomId]);
 
   useEffect(() => {
     if (!roomId) return;
@@ -430,5 +634,10 @@ export function useRoomSocket({
     joinRoom,
     leaveRoom,
     hasJoined: hasJoinedRef.current,
+    localVideoStream,
+    remoteVideoStreams,
+    isVideoEnabled,
+    startVideo,
+    stopVideo,
   };
 }

@@ -12,9 +12,12 @@ import {
   muteUser,
   unmuteUser,
   setMuteAll,
+  setCameraEnabled,
+  setCameraMemberEnabled,
 } from "../lib/moderation";
 
 import { handleJoinRoom } from "./handlers/room/joinRoom";
+import redis from "../redis";
 
 let io: Server | null = null;
 
@@ -315,6 +318,148 @@ export const initializeSocket = (server: HttpServer) => {
       } catch (error) {
         console.error("Failed to change mute-all state:", error);
       }
+    });
+
+    socket.on("moderator-set-camera", async ({ roomId, cameraEnabled }) => {
+      try {
+        const allowed = await canModerateRoom(roomId, socket.data.userId);
+        if (!allowed) {
+          socket.emit("moderation-error", {
+            message: "You don't have permission to change camera access.",
+          });
+          return;
+        }
+
+        const enabled = await setCameraEnabled(roomId, Boolean(cameraEnabled));
+        io?.to(roomId).emit("room-camera-state", {
+          roomId,
+          cameraEnabled: enabled,
+        });
+        if (!enabled) {
+          const roomSockets = await io!.in(roomId).fetchSockets();
+          for (const roomSocket of roomSockets) {
+            const isPrivileged = await canModerateRoom(
+              roomId,
+              roomSocket.data.userId,
+            );
+            if (!isPrivileged) {
+              roomSocket.emit("room-camera-force-stop", { roomId });
+            }
+          }
+        }
+        emitRoomActivity(roomId, {
+          type: "camera-permission-changed",
+          userId: socket.data.userId,
+          userName: socket.data.userName ?? socket.data.userId,
+          actorId: socket.data.userId,
+          actorName: socket.data.userName ?? socket.data.userId,
+          enabled,
+          scope: "room",
+        });
+      } catch (error) {
+        console.error("Failed to change camera access:", error);
+        socket.emit("moderation-error", {
+          message: "Unable to change camera access.",
+        });
+      }
+    });
+
+    socket.on(
+      "moderator-set-member-camera",
+      async ({ roomId, targetUserId, cameraEnabled }) => {
+        try {
+          if (!(await canModerateRoom(roomId, socket.data.userId))) {
+            socket.emit("moderation-error", {
+              message: "You don't have permission to change camera access.",
+            });
+            return;
+          }
+
+          const room = await findSingleItem(roomId);
+          if (
+            !room ||
+            !room.members.some(
+              (member: { id: string }) => member.id === targetUserId,
+            )
+          ) {
+            return;
+          }
+
+          const targetIsPrivileged =
+            room.hostId === targetUserId ||
+            (await canModerateRoom(roomId, targetUserId));
+          if (targetIsPrivileged) {
+            socket.emit("moderation-error", {
+              message: "Administrators and moderators always retain camera access.",
+            });
+            return;
+          }
+
+          const enabled = await setCameraMemberEnabled(
+            roomId,
+            targetUserId,
+            Boolean(cameraEnabled),
+          );
+          io?.to(roomId).emit("room-member-camera-state", {
+            roomId,
+            memberId: targetUserId,
+            cameraEnabled: enabled,
+          });
+          emitRoomActivity(roomId, {
+            type: "camera-permission-changed",
+            userId: targetUserId,
+            userName: getMemberName(room, targetUserId),
+            actorId: socket.data.userId,
+            actorName: socket.data.userName ?? socket.data.userId,
+            enabled,
+            scope: "member",
+          });
+        } catch (error) {
+          console.error("Failed to change member camera access:", error);
+          socket.emit("moderation-error", {
+            message: "Unable to change member camera access.",
+          });
+        }
+      },
+    );
+
+    socket.on("camera-state", async ({ roomId, cameraEnabled }) => {
+      if (socket.data.roomId !== roomId) return;
+
+      const room = await findSingleItem(roomId);
+      if (!room) return;
+
+      const userId = socket.data.userId;
+      const privileged =
+        room.hostId === userId || (await canModerateRoom(roomId, userId));
+      const memberCameraDisabled = await redis.sismember(
+        `room:${roomId}:camera-disabled`,
+        userId,
+      );
+      const roomCameraDisabled =
+        (await redis.get(`room:${roomId}:camera-enabled`)) === "0";
+      const memberCameraAllowed =
+        (await redis.sismember(`room:${roomId}:camera-allowed`, userId)) === 1;
+
+      if (
+        cameraEnabled &&
+        (memberCameraDisabled === 1 ||
+          (roomCameraDisabled && !memberCameraAllowed && !privileged))
+      ) {
+        socket.emit("camera-state", { roomId, userId, cameraEnabled: false });
+        return;
+      }
+
+      io?.to(roomId).emit("camera-state", {
+        roomId,
+        userId,
+        cameraEnabled: Boolean(cameraEnabled),
+      });
+      emitRoomActivity(roomId, {
+        type: cameraEnabled ? "camera-started" : "camera-stopped",
+        userId,
+        userName: socket.data.userName ?? userId,
+      });
     });
 
     socket.on("end-room", async ({ roomId }) => {

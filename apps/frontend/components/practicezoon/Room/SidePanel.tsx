@@ -4,6 +4,8 @@ import {
   ShieldCheck, Mic, UserMinus, Flag,
   Clock, ArrowRightCircle,
   Activity,
+  Video,
+  VideoOff,
 } from "lucide-react";
 import { socketManager } from "@/libs/socket/index";
 import { useAppSelector } from "@/libs/hooks";
@@ -14,8 +16,16 @@ import ParticipantsList from "./ParticipantsList";
 
 interface ActivityEvent {
   id: string;
-  type: "joined" | "left" | "speaking" | "raised_hand";
+  type:
+    | "joined"
+    | "left"
+    | "speaking"
+    | "raised_hand"
+    | "camera-started"
+    | "camera-stopped"
+    | "camera-permission-changed";
   name: string;
+  detail?: string;
   timestamp: Date;
 }
 
@@ -26,6 +36,9 @@ function ActivityFeed({ events }: { events: ActivityEvent[] }) {
     left: { icon: ArrowRightCircle, color: "text-gray-500", bg: "bg-white/[0.04]", label: "left" },
     speaking: { icon: Mic, color: "text-blue-400", bg: "bg-blue-500/10", label: "spoke" },
     raised_hand: { icon: Clock, color: "text-amber-400", bg: "bg-amber-500/10", label: "raised hand" },
+    "camera-started": { icon: Video, color: "text-green-400", bg: "bg-green-500/10", label: "started their camera" },
+    "camera-stopped": { icon: VideoOff, color: "text-gray-500", bg: "bg-white/[0.04]", label: "stopped their camera" },
+    "camera-permission-changed": { icon: Video, color: "text-amber-400", bg: "bg-amber-500/10", label: "changed camera permissions" },
   };
 
   if (events.length === 0) return (
@@ -46,7 +59,7 @@ function ActivityFeed({ events }: { events: ActivityEvent[] }) {
               <Icon size={11} className={cfg.color} />
             </div>
             <span className="text-xs text-gray-400 truncate">
-              <span className="font-medium text-white">{event.name}</span> {cfg.label}
+              <span className="font-medium text-white">{event.name}</span> {event.detail ?? cfg.label}
             </span>
             <span className="ml-auto text-[10px] text-gray-700 flex-shrink-0">
               {event.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -208,6 +221,42 @@ export default function SidePanel({
       setMessages((prev) => [...prev, item].sort((a, b) => {
         return a.timestamp - b.timestamp;
       }));
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = socketManager.on("room-activity", (payload: unknown) => {
+      const activity = payload as RoomActivity;
+      if (
+        activity.type !== "camera-started" &&
+        activity.type !== "camera-stopped" &&
+        activity.type !== "camera-permission-changed"
+      ) {
+        return;
+      }
+
+      const name =
+        activity.type === "camera-permission-changed"
+          ? activity.actorName
+          : activity.userName;
+      const detail =
+        activity.type === "camera-permission-changed"
+          ? `${activity.enabled ? "enabled" : "disabled"} camera access for ${
+              activity.scope === "room" ? "the room" : activity.userName
+            }`
+          : undefined;
+
+      setActivityEvents((previous) => [
+        ...previous,
+        {
+          id: `camera-${activity.timestamp}`,
+          type: activity.type,
+          name,
+          detail,
+          timestamp: new Date(activity.timestamp),
+        },
+      ]);
     });
     return () => unsub();
   }, []);

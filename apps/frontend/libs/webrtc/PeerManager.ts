@@ -136,7 +136,7 @@ export class PeerManager {
     try {
       const offer = await pc.createOffer({
         offerToReceiveAudio: true,
-        offerToReceiveVideo: false
+        offerToReceiveVideo: true
       });
       await pc.setLocalDescription(offer);
       socketManager.emit("offer", { to: socketId, offer });
@@ -231,10 +231,23 @@ export class PeerManager {
     this.iceCandidateBuffer.set(socketId, []);
   }
 
-  async renegotiateAll(stream: MediaStream): Promise<void> {
+  async renegotiateAll(stream: MediaStream | null): Promise<void> {
     console.log(`[PeerManager] Renegotiating with ${this.peers.size} peers`);
     for (const socketId of this.peers.keys()) {
-      await this.addTracksToConnection(socketId, stream);
+      if (stream) {
+        await this.addTracksToConnection(socketId, stream);
+      }
+      await this.createOffer(socketId);
+    }
+  }
+
+  async removeTracksByKind(kind: "audio" | "video"): Promise<void> {
+    for (const [socketId, pc] of this.peers) {
+      for (const sender of pc.getSenders()) {
+        if (sender.track?.kind === kind) {
+          pc.removeTrack(sender);
+        }
+      }
       await this.createOffer(socketId);
     }
   }
