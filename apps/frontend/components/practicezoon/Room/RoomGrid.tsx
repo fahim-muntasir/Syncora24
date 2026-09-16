@@ -5,6 +5,7 @@ import { useAppSelector } from "@/libs/hooks";
 import { useSpeakingEvents } from "@/hooks/useSpeakingEvents";
 import { Users, Copy } from "lucide-react";
 import toast from "react-hot-toast";
+import { socketManager } from "@/libs/socket";
 
 // Track recently joined members (joined within last 60s)
 function useRecentlyJoined(members: RoomType["members"]) {
@@ -58,18 +59,45 @@ export default function RoomGrid({
   isJoined,
   currentUserIsHost = false,
   currentUserIsModerator = false,
+  currentUserId,
+  localVideoStream,
+  remoteVideoStreams,
+  isVideoEnabled,
+  startVideo,
+  stopVideo,
 }: {
   layout: string;
   room: RoomType | null;
   isJoined: boolean;
   currentUserIsHost?: boolean;
   currentUserIsModerator?: boolean;
+  currentUserId?: string;
+  localVideoStream: MediaStream | null;
+  remoteVideoStreams: Record<string, MediaStream>;
+  isVideoEnabled: boolean;
+  startVideo: () => Promise<void>;
+  stopVideo: () => void;
 }) {
-  const { unMutedUsers, speakingUsers, forceMutedUsers, muteAll, muteAllExcludedUsers, moderatorIds } = useAppSelector((state) => state.room);
+  const {
+    unMutedUsers,
+    speakingUsers,
+    forceMutedUsers,
+    muteAll,
+    muteAllExcludedUsers,
+    moderatorIds,
+    cameraEnabled,
+    cameraDisabledMemberIds,
+    cameraAllowedMemberIds,
+  } = useAppSelector((state) => state.room);
   useSpeakingEvents(room?.id || "");
   const recentlyJoinedIds = useRecentlyJoined(room?.members ?? []);
 
   const anySpeaking = speakingUsers.length > 0;
+  const canUseCamera = (memberId: string) =>
+    cameraEnabled ||
+    cameraAllowedMemberIds.includes(memberId) ||
+    (memberId === currentUserId &&
+      (currentUserIsHost || currentUserIsModerator));
 
   if (!room || !isJoined) return null;
 
@@ -130,6 +158,20 @@ export default function RoomGrid({
               currentUserIsHost={currentUserIsHost}
               currentUserIsModerator={currentUserIsModerator}
               moderatorIds={moderatorIds}
+              currentUserId={currentUserId}
+              videoStream={room.members[0].id === currentUserId ? localVideoStream : remoteVideoStreams[room.members[0].id] ?? null}
+              cameraEnabled={canUseCamera(room.members[0].id)}
+              cameraDisabled={cameraDisabledMemberIds.includes(room.members[0].id)}
+              onToggleMemberCamera={(enabled) =>
+                socketManager.emit("moderator-set-member-camera", {
+                  roomId: room.id,
+                  targetUserId: room.members[0].id,
+                  cameraEnabled: enabled,
+                })
+              }
+              isVideoEnabled={isVideoEnabled}
+              onStartVideo={startVideo}
+              onStopVideo={stopVideo}
               recentlyJoinedIds={recentlyJoinedIds}
             />
             {/* Sidebar — "on deck" participants */}
@@ -147,6 +189,20 @@ export default function RoomGrid({
                   currentUserIsHost={currentUserIsHost}
                   currentUserIsModerator={currentUserIsModerator}
                   moderatorIds={moderatorIds}
+                  currentUserId={currentUserId}
+                  videoStream={member.id === currentUserId ? localVideoStream : remoteVideoStreams[member.id] ?? null}
+                  cameraEnabled={canUseCamera(member.id)}
+                  cameraDisabled={cameraDisabledMemberIds.includes(member.id)}
+                  onToggleMemberCamera={(enabled) =>
+                    socketManager.emit("moderator-set-member-camera", {
+                      roomId: room.id,
+                      targetUserId: member.id,
+                      cameraEnabled: enabled,
+                    })
+                  }
+                  isVideoEnabled={isVideoEnabled}
+                  onStartVideo={startVideo}
+                  onStopVideo={stopVideo}
                   recentlyJoinedIds={recentlyJoinedIds}
                 />
               ))}
@@ -166,6 +222,20 @@ export default function RoomGrid({
               currentUserIsHost={currentUserIsHost}
               currentUserIsModerator={currentUserIsModerator}
               moderatorIds={moderatorIds}
+              currentUserId={currentUserId}
+              videoStream={member.id === currentUserId ? localVideoStream : remoteVideoStreams[member.id] ?? null}
+              cameraEnabled={canUseCamera(member.id)}
+              cameraDisabled={cameraDisabledMemberIds.includes(member.id)}
+              onToggleMemberCamera={(enabled) =>
+                socketManager.emit("moderator-set-member-camera", {
+                  roomId: room.id,
+                  targetUserId: member.id,
+                  cameraEnabled: enabled,
+                })
+              }
+              isVideoEnabled={isVideoEnabled}
+              onStartVideo={startVideo}
+              onStopVideo={stopVideo}
               recentlyJoinedIds={recentlyJoinedIds}
             />
           ))

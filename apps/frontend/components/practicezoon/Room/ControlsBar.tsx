@@ -14,12 +14,25 @@ import EndRoomConfirmModal from "@/components/practicezoon/Room/Modals/EndRoomCo
 
 export default function ControlsBar({
   currentUserIsHost = false,
+  currentUserIsModerator = false,
+  cameraEnabled = true,
+  canUseCamera = cameraEnabled,
+  onToggleCameraAccess,
+  isVideoEnabled,
+  onStartVideo,
+  onStopVideo,
   raisedHandCount = 0,
 }: {
   currentUserIsHost?: boolean;
+  currentUserIsModerator?: boolean;
   raisedHandCount?: number;
+  cameraEnabled?: boolean;
+  canUseCamera?: boolean;
+  onToggleCameraAccess?: () => void;
+  isVideoEnabled: boolean;
+  onStartVideo: () => Promise<void>;
+  onStopVideo: () => void;
 }) {
-  const [isVideoOff, setIsVideoOff] = useState(true);
   const [isHandRaised, setIsHandRaised] = useState(false);
   const [hostPanelOpen, setHostPanelOpen] = useState(false);
   const [showEndRoomModal, setShowEndRoomModal] = useState(false);
@@ -79,7 +92,7 @@ export default function ControlsBar({
         isLoading={isEndingRoom}
       />
       {/* ── HOST QUICK PANEL (expandable strip above bar) ── */}
-      {currentUserIsHost && hostPanelOpen && (
+      {(currentUserIsHost || currentUserIsModerator) && hostPanelOpen && (
         <div className="border-b border-white/[0.06] px-4 py-3 flex items-center gap-3 flex-wrap bg-amber-500/[0.03]">
           <span className="flex items-center gap-1.5 text-[10px] font-bold text-amber-500/70 uppercase tracking-wider">
             <Crown size={9} /> Host controls
@@ -89,15 +102,24 @@ export default function ControlsBar({
               {muteAll ? <Mic size={12} className="text-red-400" /> : <MuteAll size={12} className="text-green-400" />}
               {muteAll ? "Unmute all" : "Mute all"}
             </button>
+            <button
+              onClick={onToggleCameraAccess}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.08] text-xs text-gray-300 hover:bg-white/[0.08] hover:text-white transition-all"
+            >
+              {cameraEnabled ? <Video size={12} className="text-green-400" /> : <VideoOff size={12} className="text-red-400" />}
+              {cameraEnabled ? "Disable cameras" : "Enable cameras"}
+            </button>
             <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.08] text-xs text-gray-300 hover:bg-white/[0.08] hover:text-white transition-all">
               <Users size={12} className="text-blue-400" /> Manage participants
             </button>
             <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.08] text-xs text-gray-300 hover:bg-white/[0.08] hover:text-white transition-all">
               <ShieldCheck size={12} className="text-emerald-400" /> Safety settings
             </button>
-            <button onClick={() => setShowEndRoomModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-400 hover:bg-red-500/15 transition-all">
-              <PhoneOff size={12} /> End room
-            </button>
+            {currentUserIsHost && (
+              <button onClick={() => setShowEndRoomModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-400 hover:bg-red-500/15 transition-all">
+                <PhoneOff size={12} /> End room
+              </button>
+            )}
           </div>
           {raisedHandCount > 0 && (
             <span className="flex items-center gap-1.5 ml-auto text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-full">
@@ -118,7 +140,7 @@ export default function ControlsBar({
           <div className="flex items-center gap-2.5">
 
             {/* Host panel toggle */}
-            {currentUserIsHost && (
+            {(currentUserIsHost || currentUserIsModerator) && (
               <button
                 onClick={() => setHostPanelOpen(!hostPanelOpen)}
                 className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all ${hostPanelOpen
@@ -146,10 +168,22 @@ export default function ControlsBar({
               label={isMuted ? "Unmute" : "Mute"}
             />
             <ControlButton
-              icon={isVideoOff ? VideoOff : Video}
-              active={!isVideoOff}
-              onClick={() => setIsVideoOff(!isVideoOff)}
-              label={isVideoOff ? "Start Video" : "Stop Video"}
+              icon={isVideoEnabled ? Video : VideoOff}
+              active={isVideoEnabled}
+              onClick={
+                isVideoEnabled
+                  ? onStopVideo
+                  : canUseCamera
+                    ? onStartVideo
+                    : undefined
+              }
+              label={
+                isVideoEnabled
+                  ? "Stop Video"
+                  : canUseCamera
+                    ? "Start Video"
+                    : "Camera disabled by moderator"
+              }
             />
             <ControlButton
               icon={Hand}

@@ -10,6 +10,9 @@ interface RoomState {
   kickedMemberIds: string[];
   muteAll: boolean;
   muteAllExcludedUsers: string[];
+  cameraEnabled: boolean;
+  cameraDisabledMemberIds: string[];
+  cameraAllowedMemberIds: string[];
   volumeLevels: Record<string, number>;
 }
 
@@ -23,6 +26,9 @@ const initialState: RoomState = {
   kickedMemberIds: [],
   muteAll: false,
   muteAllExcludedUsers: [],
+  cameraEnabled: true,
+  cameraDisabledMemberIds: [],
+  cameraAllowedMemberIds: [],
   volumeLevels: {},
 };
 
@@ -102,6 +108,35 @@ const roomSlice = createSlice({
     setMuteAllExcludedUsers: (state, action: PayloadAction<string[]>) => {
       state.muteAllExcludedUsers = action.payload;
     },
+    setCameraEnabled: (state, action: PayloadAction<boolean>) => {
+      state.cameraEnabled = action.payload;
+    },
+    setCameraDisabledMemberIds: (state, action: PayloadAction<string[]>) => {
+      state.cameraDisabledMemberIds = action.payload;
+    },
+    setCameraAllowedMemberIds: (state, action: PayloadAction<string[]>) => {
+      state.cameraAllowedMemberIds = action.payload;
+    },
+    addCameraAllowedMemberId: (state, action: PayloadAction<string>) => {
+      if (!state.cameraAllowedMemberIds.includes(action.payload)) {
+        state.cameraAllowedMemberIds.push(action.payload);
+      }
+    },
+    removeCameraAllowedMemberId: (state, action: PayloadAction<string>) => {
+      state.cameraAllowedMemberIds = state.cameraAllowedMemberIds.filter(
+        (id) => id !== action.payload,
+      );
+    },
+    addCameraDisabledMemberId: (state, action: PayloadAction<string>) => {
+      if (!state.cameraDisabledMemberIds.includes(action.payload)) {
+        state.cameraDisabledMemberIds.push(action.payload);
+      }
+    },
+    removeCameraDisabledMemberId: (state, action: PayloadAction<string>) => {
+      state.cameraDisabledMemberIds = state.cameraDisabledMemberIds.filter(
+        (id) => id !== action.payload,
+      );
+    },
     setVolumeLevel: (
       state,
       action: PayloadAction<{
@@ -143,6 +178,13 @@ export const {
   setMuteAll,
   clearUnMutedUsersExcept,
   setMuteAllExcludedUsers,
+  setCameraEnabled,
+  setCameraDisabledMemberIds,
+  setCameraAllowedMemberIds,
+  addCameraAllowedMemberId,
+  removeCameraAllowedMemberId,
+  addCameraDisabledMemberId,
+  removeCameraDisabledMemberId,
   setVolumeLevel,
   removeVolumeLevel,
   clearVolumeLevels,

@@ -33,6 +33,7 @@ export default function VideoConference() {
     refetchOnMountOrArgChange: true,
   });
   const currentUser = useAppSelector((state) => state.auth.user);
+  const moderatorIds = useAppSelector((state) => state.room.moderatorIds);
   const dispatch = useAppDispatch();
 
   const handleUserJoined = ({ user }: { user: { id: string; name: string } }) => {
@@ -55,10 +56,22 @@ export default function VideoConference() {
     setShowRoomKickedModal(true);
   };
 
-  const { joinRoom, leaveRoom } = useRoomSocket({
+  const {
+    joinRoom,
+    leaveRoom,
+    localVideoStream,
+    remoteVideoStreams,
+    isVideoEnabled,
+    startVideo,
+    stopVideo,
+  } = useRoomSocket({
     roomId,
     currentUserId: currentUser?.id,
     currentUserName: currentUser?.fullName,
+    isPrivileged: Boolean(
+      currentUser &&
+        (currentUser.id === room?.hostId || moderatorIds.includes(currentUser.id)),
+    ),
     onUserJoined: handleUserJoined,
     onUserLeft: handleUserLeft,
     onKicked: handleKicked,
@@ -183,6 +196,12 @@ export default function VideoConference() {
             isJoined={isJoined}
             sidebarCollapsed={sidebarCollapsed}
             setSidebarCollapsed={setSidebarCollapsed}
+            currentUserId={currentUser?.id}
+            localVideoStream={localVideoStream}
+            remoteVideoStreams={remoteVideoStreams}
+            isVideoEnabled={isVideoEnabled}
+            startVideo={startVideo}
+            stopVideo={stopVideo}
           />
         </div>
       )}

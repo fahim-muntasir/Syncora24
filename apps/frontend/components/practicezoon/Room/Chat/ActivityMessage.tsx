@@ -9,6 +9,8 @@ import {
   Volume2,
   DoorOpen,
   AlertTriangle,
+  Video,
+  VideoOff,
 } from "lucide-react";
 import { RoomActivity } from "@/types/chat";
 
@@ -115,6 +117,29 @@ function getActivityConfig(
       return {
         icon: <AlertTriangle size={13} strokeWidth={1.8} />,
         iconColor: "text-red-400/80",
+        textColor: "text-gray-500",
+      };
+
+    case "camera-started":
+      return {
+        icon: <Video size={13} strokeWidth={1.8} />,
+        iconColor: "text-emerald-400/70",
+        textColor: "text-gray-500",
+      };
+
+    case "camera-stopped":
+      return {
+        icon: <VideoOff size={13} strokeWidth={1.8} />,
+        iconColor: "text-gray-500",
+        textColor: "text-gray-500",
+      };
+
+    case "camera-permission-changed":
+      return {
+        icon: activity.enabled
+          ? <Video size={13} strokeWidth={1.8} />
+          : <VideoOff size={13} strokeWidth={1.8} />,
+        iconColor: activity.enabled ? "text-emerald-400/70" : "text-amber-400/80",
         textColor: "text-gray-500",
       };
   }
@@ -230,6 +255,33 @@ function renderActivityText(
             {activity.actorName}
           </span>{" "}
           ended the room
+        </>
+      );
+
+    case "camera-started":
+      return (
+        <>
+          <span className="text-gray-400 font-medium">{activity.userName}</span>{" "}
+          started their camera
+        </>
+      );
+
+    case "camera-stopped":
+      return (
+        <>
+          <span className="text-gray-400 font-medium">{activity.userName}</span>{" "}
+          stopped their camera
+        </>
+      );
+
+    case "camera-permission-changed":
+      return (
+        <>
+          <span className="text-gray-400 font-medium">{activity.actorName}</span>{" "}
+          {activity.enabled ? "enabled" : "disabled"} camera access for{" "}
+          <span className="text-gray-400 font-medium">
+            {activity.scope === "room" ? "the room" : activity.userName}
+          </span>
         </>
       );
   }
