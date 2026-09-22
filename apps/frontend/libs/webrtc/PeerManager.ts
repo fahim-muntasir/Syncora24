@@ -30,6 +30,8 @@ export class PeerManager {
   private volumeFrames: Map<string, number> = new Map();
   private mediaStreamSources: Map<string, MediaStreamAudioSourceNode> = new Map();
   private iceCandidateBuffer: Map<string, RTCIceCandidateInit[]> = new Map();
+  private signalingQueues: Map<string, Promise<void>> = new Map();
+  private screenShareTrackIds = new Set<string>();
 
   constructor(
     private readonly roomId: string, 
@@ -58,6 +60,7 @@ export class PeerManager {
   createConnection(
     socketId: string,
     stream: MediaStream | null,
+    screenShareStream: MediaStream | null = null,
   ): RTCPeerConnection {
     if (this.peers.has(socketId)) return this.peers.get(socketId)!;
 
@@ -65,6 +68,9 @@ export class PeerManager {
 
     if (stream) {
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+    }
+    if (screenShareStream) {
+      this.addScreenShareTracks(pc, screenShareStream);
     }
 
     pc.ontrack = (event) => {
@@ -130,66 +136,99 @@ export class PeerManager {
   }
 
   async createOffer(socketId: string): Promise<void> {
-    const pc = this.peers.get(socketId);
-    if (!pc) return;
+    await this.enqueueSignaling(socketId, async () => {
+      const pc = this.peers.get(socketId);
+      if (!pc || pc.signalingState !== "stable") return;
 
-    try {
-      const offer = await pc.createOffer({
-        offerToReceiveAudio: true,
-        offerToReceiveVideo: true
-      });
-      await pc.setLocalDescription(offer);
-      socketManager.emit("offer", { to: socketId, offer });
-      console.log(`[PeerManager] Sent offer to ${socketId}`);
-    } catch (err) {
-      console.error(`[PeerManager] createOffer failed for ${socketId}:`, err);
-    }
+      try {
+        const offer = await pc.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true,
+        });
+        await pc.setLocalDescription(offer);
+        socketManager.emit("offer", { to: socketId, offer });
+        console.log(`[PeerManager] Sent offer to ${socketId}`);
+      } catch (err) {
+        console.error(`[PeerManager] createOffer failed for ${socketId}:`, err);
+      }
+    });
   }
 
   async handleOffer(
     socketId: string,
     offer: RTCSessionDescriptionInit,
     stream: MediaStream | null,
+    screenShareStream: MediaStream | null = null,
   ): Promise<void> {
-    let pc = this.peers.get(socketId);
-    if (!pc) {
-      pc = this.createConnection(socketId, stream);
-    } else if (stream) {
-      await this.addTracksToConnection(socketId, stream);
-    }
+    await this.enqueueSignaling(socketId, async () => {
+      let pc = this.peers.get(socketId);
+      if (!pc) {
+        pc = this.createConnection(socketId, stream, screenShareStream);
+      } else if (stream) {
+        await this.addTracksToConnection(socketId, stream);
+        if (screenShareStream) {
+          this.addScreenShareTracks(pc, screenShareStream);
+        }
+      }
 
-    try {
-      await pc.setRemoteDescription(new RTCSessionDescription(offer));
-      await this.flushIceCandidates(socketId);
+      try {
+        if (pc.signalingState === "have-local-offer") {
+          await pc.setLocalDescription({ type: "rollback" });
+        }
 
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      socketManager.emit("answer", { to: socketId, answer });
-      console.log(`[PeerManager] Sent answer to ${socketId}`);
-    } catch (err) {
-      console.error(`[PeerManager] handleOffer failed for ${socketId}:`, err);
-    }
+        if (pc.signalingState !== "stable") return;
+
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        await this.flushIceCandidates(socketId);
+
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        socketManager.emit("answer", { to: socketId, answer });
+        console.log(`[PeerManager] Sent answer to ${socketId}`);
+      } catch (err) {
+        console.error(`[PeerManager] handleOffer failed for ${socketId}:`, err);
+      }
+    });
   }
 
   async handleAnswer(
     socketId: string,
     answer: RTCSessionDescriptionInit,
   ): Promise<void> {
-    const pc = this.peers.get(socketId);
-    if (!pc) {
-      console.warn(`[PeerManager] handleAnswer: no peer for ${socketId}`);
-      return;
-    }
-    if (pc.signalingState !== "have-local-offer") {
-      console.warn(`[PeerManager] handleAnswer: wrong state ${pc.signalingState} for ${socketId}`);
-      return;
-    }
+    await this.enqueueSignaling(socketId, async () => {
+      const pc = this.peers.get(socketId);
+      if (!pc) {
+        console.warn(`[PeerManager] handleAnswer: no peer for ${socketId}`);
+        return;
+      }
+      if (pc.signalingState !== "have-local-offer") {
+        console.warn(`[PeerManager] handleAnswer: wrong state ${pc.signalingState} for ${socketId}`);
+        return;
+      }
+      try {
+        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+        await this.flushIceCandidates(socketId);
+        console.log(`[PeerManager] Set remote answer from ${socketId}`);
+      } catch (err) {
+        console.error(`[PeerManager] handleAnswer failed for ${socketId}:`, err);
+      }
+    });
+  }
+
+  private async enqueueSignaling(
+    socketId: string,
+    operation: () => Promise<void>,
+  ): Promise<void> {
+    const previous = this.signalingQueues.get(socketId) ?? Promise.resolve();
+    const current = previous.catch(() => undefined).then(operation);
+    this.signalingQueues.set(socketId, current);
+
     try {
-      await pc.setRemoteDescription(new RTCSessionDescription(answer));
-      await this.flushIceCandidates(socketId);
-      console.log(`[PeerManager] Set remote answer from ${socketId}`);
-    } catch (err) {
-      console.error(`[PeerManager] handleAnswer failed for ${socketId}:`, err);
+      await current;
+    } finally {
+      if (this.signalingQueues.get(socketId) === current) {
+        this.signalingQueues.delete(socketId);
+      }
     }
   }
 
@@ -231,11 +270,18 @@ export class PeerManager {
     this.iceCandidateBuffer.set(socketId, []);
   }
 
-  async renegotiateAll(stream: MediaStream | null): Promise<void> {
+  async renegotiateAll(
+    stream: MediaStream | null,
+    screenShareStream: MediaStream | null = null,
+  ): Promise<void> {
     console.log(`[PeerManager] Renegotiating with ${this.peers.size} peers`);
     for (const socketId of this.peers.keys()) {
       if (stream) {
         await this.addTracksToConnection(socketId, stream);
+      }
+      if (screenShareStream) {
+        const pc = this.peers.get(socketId);
+        if (pc) this.addScreenShareTracks(pc, screenShareStream);
       }
       await this.createOffer(socketId);
     }
@@ -244,12 +290,55 @@ export class PeerManager {
   async removeTracksByKind(kind: "audio" | "video"): Promise<void> {
     for (const [socketId, pc] of this.peers) {
       for (const sender of pc.getSenders()) {
-        if (sender.track?.kind === kind) {
+        if (
+          sender.track?.kind === kind &&
+          !(
+            kind === "video" &&
+            sender.track &&
+            this.screenShareTrackIds.has(sender.track.id)
+          )
+        ) {
           pc.removeTrack(sender);
         }
       }
       await this.createOffer(socketId);
     }
+  }
+
+  async addScreenShareStream(stream: MediaStream): Promise<void> {
+    for (const [socketId, pc] of this.peers) {
+      this.addScreenShareTracks(pc, stream);
+      await this.createOffer(socketId);
+    }
+  }
+
+  private addScreenShareTracks(
+    pc: RTCPeerConnection,
+    stream: MediaStream,
+  ): void {
+    for (const track of stream.getVideoTracks()) {
+      const alreadySending = pc
+        .getSenders()
+        .some((sender) => sender.track?.id === track.id);
+
+      if (!alreadySending) {
+        pc.addTrack(track, stream);
+        this.screenShareTrackIds.add(track.id);
+      }
+    }
+  }
+
+  async removeScreenShareTracks(): Promise<void> {
+    for (const [socketId, pc] of this.peers) {
+      for (const sender of [...pc.getSenders()]) {
+        const track = sender.track;
+        if (track && this.screenShareTrackIds.has(track.id)) {
+          pc.removeTrack(sender);
+        }
+      }
+      await this.createOffer(socketId);
+    }
+    this.screenShareTrackIds.clear();
   }
 
   closeConnection(socketId: string): void {
@@ -273,6 +362,7 @@ export class PeerManager {
     }
 
     this.iceCandidateBuffer.delete(socketId);
+    this.signalingQueues.delete(socketId);
   }
 
   closeAll(): void {

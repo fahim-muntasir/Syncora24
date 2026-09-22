@@ -3,6 +3,7 @@ import {
   Mic, MicOff, Video, VideoOff, PhoneOff, Share2, Hand,
   Crown, ShieldCheck, Users,
   MicOff as MuteAll,
+  MonitorUp,
 } from "lucide-react";
 import ControlButton from "./ControlButton";
 import { useAudio } from "@/context/AudioContext";
@@ -21,6 +22,9 @@ export default function ControlsBar({
   isVideoEnabled,
   onStartVideo,
   onStopVideo,
+  isScreenSharing = false,
+  onStartScreenShare,
+  onStopScreenShare,
   raisedHandCount = 0,
 }: {
   currentUserIsHost?: boolean;
@@ -32,6 +36,9 @@ export default function ControlsBar({
   isVideoEnabled: boolean;
   onStartVideo: () => Promise<void>;
   onStopVideo: () => void;
+  isScreenSharing?: boolean;
+  onStartScreenShare?: () => Promise<void>;
+  onStopScreenShare?: () => void;
 }) {
   const [isHandRaised, setIsHandRaised] = useState(false);
   const [hostPanelOpen, setHostPanelOpen] = useState(false);
@@ -195,6 +202,16 @@ export default function ControlsBar({
               icon={Share2}
               onClick={handleShare}
               label="Share"
+            />
+            <ControlButton
+              icon={MonitorUp}
+              active={isScreenSharing}
+              onClick={
+                isScreenSharing
+                  ? onStopScreenShare
+                  : onStartScreenShare
+              }
+              label={isScreenSharing ? "Stop sharing" : "Screen share"}
             />
 
             {/* Leave — visual separation */}

@@ -40,6 +40,7 @@ export const handleJoinRoom = async (
       },
     });
 
+    
     // Get participants BEFORE adding this socket to the Socket.IO room.
     const existingSockets = await io.in(roomId).fetchSockets();
 
@@ -84,6 +85,17 @@ export const handleJoinRoom = async (
       roomId,
       participants: existingUsers,
     });
+
+    for (const existingSocket of existingSockets) {
+      if (!existingSocket.data.isScreenSharing) continue;
+      socket.emit("screen-share-state", {
+        roomId,
+        userId: existingSocket.data.userId,
+        userName: existingSocket.data.userName,
+        sharing: true,
+        streamId: existingSocket.data.screenShareStreamId,
+      });
+    }
 
     
     // Notify existing realtime participants.

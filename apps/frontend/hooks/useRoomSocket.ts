@@ -47,9 +47,17 @@ export interface UseRoomSocketReturn {
   hasJoined: boolean;
   localVideoStream: MediaStream | null;
   remoteVideoStreams: Record<string, MediaStream>;
+  screenShareStreams: Record<string, MediaStream>;
+  selectedScreenShareOwnerId: string | null;
+  selectedCameraOwnerId: string | null;
   isVideoEnabled: boolean;
   startVideo: () => Promise<void>;
   stopVideo: () => void;
+  startScreenShare: () => Promise<void>;
+  stopScreenShare: () => void;
+  selectScreenShare: (userId: string) => void;
+  selectCamera: (userId: string) => void;
+  isScreenSharing: boolean;
 }
 
 export function useRoomSocket({
@@ -76,9 +84,18 @@ export function useRoomSocket({
   const socketToUserRef = useRef<Map<string, string>>(new Map());
   const joiningRef = useRef(false);
   const videoStreamRef = useRef<MediaStream | null>(null);
+  const screenShareStreamRef = useRef<MediaStream | null>(null);
+  const screenShareOwnerRef = useRef<string | null>(null);
+  const stoppingScreenShareRef = useRef(false);
+  const activeScreenShareUsersRef = useRef<Set<string>>(new Set());
+  const screenShareStreamIdsRef = useRef<Map<string, string>>(new Map());
   const [localVideoStream, setLocalVideoStream] = useState<MediaStream | null>(null);
   const [remoteVideoStreams, setRemoteVideoStreams] = useState<Record<string, MediaStream>>({});
+  const [screenShareStreams, setScreenShareStreams] = useState<Record<string, MediaStream>>({});
+  const [selectedScreenShareOwnerId, setSelectedScreenShareOwnerId] = useState<string | null>(null);
+  const [selectedCameraOwnerId, setSelectedCameraOwnerId] = useState<string | null>(null);
   const [isVideoEnabled, setIsVideoEnabled] = useState(false);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
   const getLocalMediaStream = useCallback(() => {
     const tracks = [
       ...(localStreamRef.current?.getTracks() ?? []),
@@ -87,16 +104,115 @@ export function useRoomSocket({
     return tracks.length > 0 ? new MediaStream(tracks) : null;
   }, [localStreamRef]);
 
+  const syncLocalMedia = useCallback(() => {
+    if (!peerManagerRef.current) return;
+
+    void peerManagerRef.current.renegotiateAll(
+      getLocalMediaStream(),
+      screenShareStreamRef.current,
+    );
+  }, [getLocalMediaStream]);
+
   const stopVideo = useCallback(() => {
     videoStreamRef.current?.getTracks().forEach((track) => track.stop());
     videoStreamRef.current = null;
     setLocalVideoStream(null);
     setIsVideoEnabled(false);
+    setSelectedCameraOwnerId((selected) =>
+      selected === currentUserId ? null : selected,
+    );
     if (roomId) {
       socketManager.emit("camera-state", { roomId, cameraEnabled: false });
     }
     void peerManagerRef.current?.removeTracksByKind("video");
   }, [roomId]);
+
+  const stopScreenShare = useCallback(() => {
+    if (stoppingScreenShareRef.current) return;
+    stoppingScreenShareRef.current = true;
+
+    const ownerId = screenShareOwnerRef.current ?? currentUserId;
+    screenShareStreamRef.current?.getTracks().forEach((track) => {
+      track.onended = null;
+      track.stop();
+    });
+    screenShareStreamRef.current = null;
+    screenShareOwnerRef.current = null;
+    setIsScreenSharing(false);
+    setScreenShareStreams((previous) => {
+      const next = { ...previous };
+      if (ownerId) delete next[ownerId];
+      return next;
+    });
+    if (ownerId && roomId && currentUserId === ownerId) {
+      socketManager.emit("screen-share-state", {
+        roomId,
+        userId: currentUserId,
+        sharing: false,
+      });
+    }
+    activeScreenShareUsersRef.current.delete(ownerId ?? "");
+    if (ownerId) {
+      screenShareStreamIdsRef.current.delete(ownerId);
+    }
+    setSelectedScreenShareOwnerId((selected) =>
+      selected === ownerId ? null : selected,
+    );
+    void peerManagerRef.current?.removeScreenShareTracks();
+    stoppingScreenShareRef.current = false;
+  }, [currentUserId, roomId]);
+
+  const startScreenShare = useCallback(async () => {
+    if (!roomId || !currentUserId || screenShareStreamRef.current) {
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+      });
+
+      stream.getVideoTracks().forEach((track) => {
+        track.contentHint = "detail";
+        track.onended = () => {
+          stopScreenShare();
+        };
+      });
+
+      screenShareStreamRef.current = stream;
+      screenShareOwnerRef.current = currentUserId;
+      screenShareStreamIdsRef.current.set(currentUserId, stream.id);
+      setScreenShareStreams((previous) => ({
+        ...previous,
+        [currentUserId]: stream,
+      }));
+      setSelectedScreenShareOwnerId(currentUserId);
+      activeScreenShareUsersRef.current.add(currentUserId);
+      setIsScreenSharing(true);
+      socketManager.emit("screen-share-state", {
+        roomId,
+        userId: currentUserId,
+        sharing: true,
+        streamId: stream.id,
+      });
+      await peerManagerRef.current?.addScreenShareStream(stream);
+    } catch (error) {
+      console.error("[useRoomSocket] Failed to start screen share:", error);
+      toast.error(
+        error instanceof DOMException && error.name === "NotAllowedError"
+          ? "Screen share permission was denied."
+          : "Unable to start screen sharing.",
+      );
+    }
+  }, [currentUserId, roomId, stopScreenShare]);
+
+  const selectScreenShare = useCallback((userId: string) => {
+    setSelectedScreenShareOwnerId(userId);
+  }, []);
+
+  const selectCamera = useCallback((userId: string) => {
+    setSelectedCameraOwnerId(userId);
+  }, []);
 
   const startVideo = useCallback(async () => {
     if (
@@ -115,7 +231,7 @@ export function useRoomSocket({
       setLocalVideoStream(stream);
       setIsVideoEnabled(true);
       socketManager.emit("camera-state", { roomId, cameraEnabled: true });
-      await peerManagerRef.current?.renegotiateAll(stream);
+      syncLocalMedia();
     } catch (error) {
       console.error("[useRoomSocket] Failed to start camera:", error);
       toast.error(
@@ -131,6 +247,7 @@ export function useRoomSocket({
     currentUserId,
     isPrivileged,
     roomId,
+    syncLocalMedia,
   ]);
 
   const [getIceServers] = useLazyGetIceServersQuery();
@@ -160,10 +277,38 @@ export function useRoomSocket({
 
       peerManagerRef.current = new PeerManager(roomId, peerConfiguration);
       peerManagerRef.current.on("track", (socketId, event) => {
-        if (!event || event.track.kind !== "video") return;
+        if (!event) return;
+
         const stream = event.streams[0];
         const userId = socketToUserRef.current.get(socketId);
         if (!stream || !userId) return;
+
+        if (
+          event.track.kind === "video" &&
+          (event.track.contentHint === "detail" ||
+            screenShareStreamIdsRef.current.get(userId) === stream.id)
+        ) {
+          setScreenShareStreams((previous) => ({
+            ...previous,
+            [userId]: stream,
+          }));
+          event.track.onended = () => {
+            setScreenShareStreams((previous) => {
+              if (previous[userId] !== stream) return previous;
+              const next = { ...previous };
+              delete next[userId];
+              return next;
+            });
+            activeScreenShareUsersRef.current.delete(userId);
+            screenShareStreamIdsRef.current.delete(userId);
+            setSelectedScreenShareOwnerId((selected) =>
+              selected === userId ? null : selected,
+            );
+          };
+          return;
+        }
+
+        if (event.track.kind !== "video") return;
 
         setRemoteVideoStreams((previous) => ({ ...previous, [userId]: stream }));
         event.track.onended = () => {
@@ -172,6 +317,9 @@ export function useRoomSocket({
             delete next[userId];
             return next;
           });
+          setSelectedCameraOwnerId((selected) =>
+            selected === userId ? null : selected,
+          );
         };
       });
 
@@ -319,19 +467,10 @@ export function useRoomSocket({
         const pc = peerManagerRef.current.createConnection(
           socketId,
           getLocalMediaStream(),
+          screenShareStreamRef.current,
         );
 
-        const offer = await pc.createOffer({
-          offerToReceiveAudio: true,
-          offerToReceiveVideo: true,
-        });
-
-        await pc.setLocalDescription(offer);
-
-        socketManager.emit("offer", {
-          to: socketId,
-          offer,
-        });
+        await peerManagerRef.current.createOffer(socketId);
       },
     );
 
@@ -349,6 +488,19 @@ export function useRoomSocket({
           delete next[userId];
           return next;
         });
+        activeScreenShareUsersRef.current.delete(userId);
+        screenShareStreamIdsRef.current.delete(userId);
+        setScreenShareStreams((previous) => {
+          const next = { ...previous };
+          delete next[userId];
+          return next;
+        });
+        setSelectedScreenShareOwnerId((selected) =>
+          selected === userId ? null : selected,
+        );
+        setSelectedCameraOwnerId((selected) =>
+          selected === userId ? null : selected,
+        );
       }
 
       dispatch(removeVolumeLevel(memberId));
@@ -368,7 +520,7 @@ export function useRoomSocket({
       unsubJoined();
       unsubLeft();
     };
-  }, [roomId, onUserJoined, onUserLeft, dispatch, streamVersion, getLocalMediaStream]);
+  }, [roomId, onUserJoined, onUserLeft, dispatch, getLocalMediaStream]);
 
   // ── WebRTC signaling ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -384,6 +536,7 @@ export function useRoomSocket({
         from,
         offer,
         getLocalMediaStream(),
+        screenShareStreamRef.current,
       );
     });
 
@@ -412,7 +565,7 @@ export function useRoomSocket({
       unsubAnswer();
       unsubIce();
     };
-  }, [roomId, streamVersion, getLocalMediaStream]);
+  }, [roomId, getLocalMediaStream]);
 
   // streamVersion is real React state, so this effect correctly fires when
   // the user unmutes for the first time and localStreamRef.current is set.
@@ -425,13 +578,14 @@ export function useRoomSocket({
     console.log(
       `[useRoomSocket] Stream available (v${streamVersion}), renegotiating with ${peerManagerRef.current.getPeerCount()} peers`,
     );
-    peerManagerRef.current.renegotiateAll(localStreamRef.current);
+    syncLocalMedia();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [streamVersion]);
+  }, [streamVersion, syncLocalMedia]);
 
   // ── Cleanup if unmounted without joining ────────────────────────────────────
   useEffect(() => {
     return () => {
+      stopScreenShare();
       stopVideo();
       if (!hasJoinedRef.current) {
         if (currentUserId) {
@@ -441,7 +595,7 @@ export function useRoomSocket({
         peerManagerRef.current = null;
       }
     };
-  }, [currentUserId, stopAudio, stopVideo]);
+  }, [currentUserId, stopAudio, stopScreenShare, stopVideo]);
 
   useEffect(() => {
     if (!roomId) return;
@@ -503,6 +657,50 @@ export function useRoomSocket({
     isPrivileged,
     stopVideo,
   ]);
+
+  useEffect(() => {
+    if (!roomId) return;
+    return socketManager.on("screen-share-state", (payload: unknown) => {
+      const event = payload as {
+        roomId: string;
+        userId: string;
+        sharing: boolean;
+        streamId?: string;
+      };
+
+      if (event.roomId !== roomId) return;
+
+      if (event.sharing) {
+        activeScreenShareUsersRef.current.add(event.userId);
+        if (event.streamId) {
+          screenShareStreamIdsRef.current.set(event.userId, event.streamId);
+        }
+        if (event.userId === currentUserId) {
+          setScreenShareStreams((previous) => ({
+            ...previous,
+            [event.userId]:
+              screenShareStreamRef.current ?? previous[event.userId],
+          }));
+          setIsScreenSharing(Boolean(screenShareStreamRef.current));
+        }
+        return;
+      }
+
+      activeScreenShareUsersRef.current.delete(event.userId);
+      screenShareStreamIdsRef.current.delete(event.userId);
+      if (event.userId === currentUserId) {
+        setIsScreenSharing(false);
+      }
+      setScreenShareStreams((previous) => {
+        const next = { ...previous };
+        delete next[event.userId];
+        return next;
+      });
+      setSelectedScreenShareOwnerId((selected) =>
+        selected === event.userId ? null : selected,
+      );
+    });
+  }, [currentUserId, roomId]);
 
   useEffect(() => {
     if (!roomId) return;
@@ -573,7 +771,7 @@ export function useRoomSocket({
         return next;
       });
     });
-  }, [roomId]);
+  }, [currentUserId, roomId]);
 
   useEffect(() => {
     if (!roomId) return;
@@ -636,8 +834,16 @@ export function useRoomSocket({
     hasJoined: hasJoinedRef.current,
     localVideoStream,
     remoteVideoStreams,
+    screenShareStreams,
+    selectedScreenShareOwnerId,
+    selectedCameraOwnerId,
     isVideoEnabled,
     startVideo,
     stopVideo,
+    startScreenShare,
+    stopScreenShare,
+    selectScreenShare,
+    selectCamera,
+    isScreenSharing,
   };
 }

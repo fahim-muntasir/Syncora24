@@ -62,6 +62,10 @@ export default function RoomGrid({
   currentUserId,
   localVideoStream,
   remoteVideoStreams,
+  screenShareStreams,
+  onSelectScreenShare,
+  onSelectCamera,
+  compact = false,
   isVideoEnabled,
   startVideo,
   stopVideo,
@@ -74,6 +78,10 @@ export default function RoomGrid({
   currentUserId?: string;
   localVideoStream: MediaStream | null;
   remoteVideoStreams: Record<string, MediaStream>;
+  screenShareStreams: Record<string, MediaStream>;
+  onSelectScreenShare: (userId: string) => void;
+  onSelectCamera: (userId: string) => void;
+  compact?: boolean;
   isVideoEnabled: boolean;
   startVideo: () => Promise<void>;
   stopVideo: () => void;
@@ -131,7 +139,13 @@ export default function RoomGrid({
   const gridClass = getGridClass(room.members.length, layout);
 
   return (
-    <div className={`flex-1 p-4 overflow-auto min-h-0 relative`}>
+    <div
+      className={`flex-1 ${
+        compact
+          ? "h-full p-1 overflow-x-auto overflow-y-hidden"
+          : "p-4 overflow-auto min-h-0"
+      } relative`}
+    >
       {/* Ambient speaking pulse — subtle edge glow when room is active */}
       {anySpeaking && (
         <div
@@ -142,7 +156,17 @@ export default function RoomGrid({
         />
       )}
 
-      <div className={`grid gap-3 h-full relative z-10 ${gridClass} ${room.members.length <= 2 ? "content-center" : "auto-rows-fr"}`}>
+      <div
+        className={`grid gap-3 ${
+          compact ? "h-full auto-cols-[180px] grid-flow-col" : "h-full"
+        } relative z-10 ${gridClass} ${
+          compact
+            ? "content-stretch"
+            : room.members.length <= 2
+              ? "content-center"
+              : "auto-rows-fr"
+        }`}
+      >
         {layout === "spotlight" ? (
           <>
             {/* Featured speaker */}
@@ -160,6 +184,10 @@ export default function RoomGrid({
               moderatorIds={moderatorIds}
               currentUserId={currentUserId}
               videoStream={room.members[0].id === currentUserId ? localVideoStream : remoteVideoStreams[room.members[0].id] ?? null}
+              screenShareStream={screenShareStreams[room.members[0].id] ?? null}
+              onSelectScreenShare={onSelectScreenShare}
+              onSelectCamera={onSelectCamera}
+              compact={compact}
               cameraEnabled={canUseCamera(room.members[0].id)}
               cameraDisabled={cameraDisabledMemberIds.includes(room.members[0].id)}
               onToggleMemberCamera={(enabled) =>
@@ -191,6 +219,10 @@ export default function RoomGrid({
                   moderatorIds={moderatorIds}
                   currentUserId={currentUserId}
                   videoStream={member.id === currentUserId ? localVideoStream : remoteVideoStreams[member.id] ?? null}
+                  screenShareStream={screenShareStreams[member.id] ?? null}
+                  onSelectScreenShare={onSelectScreenShare}
+                  onSelectCamera={onSelectCamera}
+                  compact={compact}
                   cameraEnabled={canUseCamera(member.id)}
                   cameraDisabled={cameraDisabledMemberIds.includes(member.id)}
                   onToggleMemberCamera={(enabled) =>
@@ -224,6 +256,10 @@ export default function RoomGrid({
               moderatorIds={moderatorIds}
               currentUserId={currentUserId}
               videoStream={member.id === currentUserId ? localVideoStream : remoteVideoStreams[member.id] ?? null}
+              screenShareStream={screenShareStreams[member.id] ?? null}
+              onSelectScreenShare={onSelectScreenShare}
+              onSelectCamera={onSelectCamera}
+              compact={compact}
               cameraEnabled={canUseCamera(member.id)}
               cameraDisabled={cameraDisabledMemberIds.includes(member.id)}
               onToggleMemberCamera={(enabled) =>
