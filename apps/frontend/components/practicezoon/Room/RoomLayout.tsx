@@ -26,7 +26,7 @@ export default function RoomLayout({
   stopScreenShare,
   selectScreenShare,
   selectCamera,
-  isScreenSharing,
+  // isScreenSharing,
 }: {
   room: RoomType | null;
   layout: "grid" | "spotlight";
@@ -46,7 +46,7 @@ export default function RoomLayout({
   stopScreenShare: () => void;
   selectScreenShare: (userId: string) => void;
   selectCamera: (userId: string) => void;
-  isScreenSharing: boolean;
+  // isScreenSharing: boolean;
 }) {
   const currentUser = useAppSelector((state) => state.auth.user);
   const {
