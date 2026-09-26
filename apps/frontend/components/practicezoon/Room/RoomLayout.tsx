@@ -16,9 +16,17 @@ export default function RoomLayout({
   currentUserId,
   localVideoStream,
   remoteVideoStreams,
+  screenShareStreams,
+  selectedScreenShareOwnerId,
+  selectedCameraOwnerId,
   isVideoEnabled,
   startVideo,
   stopVideo,
+  startScreenShare,
+  stopScreenShare,
+  selectScreenShare,
+  selectCamera,
+  // isScreenSharing,
 }: {
   room: RoomType | null;
   layout: "grid" | "spotlight";
@@ -28,9 +36,17 @@ export default function RoomLayout({
   currentUserId?: string;
   localVideoStream: MediaStream | null;
   remoteVideoStreams: Record<string, MediaStream>;
+  screenShareStreams: Record<string, MediaStream>;
+  selectedScreenShareOwnerId: string | null;
+  selectedCameraOwnerId: string | null;
   isVideoEnabled: boolean;
   startVideo: () => Promise<void>;
   stopVideo: () => void;
+  startScreenShare: () => Promise<void>;
+  stopScreenShare: () => void;
+  selectScreenShare: (userId: string) => void;
+  selectCamera: (userId: string) => void;
+  // isScreenSharing: boolean;
 }) {
   const currentUser = useAppSelector((state) => state.auth.user);
   const {
@@ -45,6 +61,14 @@ export default function RoomLayout({
     room && currentUser && moderatorIds.includes(currentUser.id),
   );
   const raisedHandCount = 0;
+  const selectedScreenShareStream = selectedScreenShareOwnerId
+    ? screenShareStreams[selectedScreenShareOwnerId] ?? null
+    : null;
+  const selectedCameraStream = selectedCameraOwnerId
+    ? selectedCameraOwnerId === currentUserId
+      ? localVideoStream
+      : remoteVideoStreams[selectedCameraOwnerId] ?? null
+    : null;
 
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -55,19 +79,120 @@ export default function RoomLayout({
           currentUserIsHost={currentUserIsHost}
           currentUserIsModerator={currentUserIsModerator}
         />
-        <RoomGrid
-          layout={layout}
-          room={room}
-          isJoined={isJoined}
-          currentUserIsHost={currentUserIsHost}
-          currentUserIsModerator={currentUserIsModerator}
-          currentUserId={currentUserId}
-          localVideoStream={localVideoStream}
-          remoteVideoStreams={remoteVideoStreams}
-          isVideoEnabled={isVideoEnabled}
-          startVideo={startVideo}
-          stopVideo={stopVideo}
-        />
+        {selectedScreenShareStream ? (
+          <div className="flex-1 p-4 overflow-hidden">
+            <div className="h-full flex flex-col gap-3">
+              <div className={`flex-1 min-h-[280px] grid gap-3 ${
+                selectedCameraStream ? "grid-cols-[minmax(0,1fr)_minmax(180px,0.28fr)]" : ""
+              }`}>
+                <div className="relative min-w-0 rounded-2xl overflow-hidden border border-white/[0.08] bg-black">
+                  <video
+                    autoPlay
+                    muted={selectedScreenShareOwnerId === currentUserId}
+                    playsInline
+                    className="absolute inset-0 w-full h-full object-contain bg-black"
+                    ref={(element) => {
+                      if (element) element.srcObject = selectedScreenShareStream;
+                    }}
+                  />
+                  <div className="absolute bottom-3 left-3 rounded-full border border-white/[0.1] bg-black/55 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/80 backdrop-blur-sm">
+                    {selectedScreenShareOwnerId === currentUserId ? "Your screen" : "Screen share"}
+                  </div>
+                </div>
+                {selectedCameraStream && (
+                  <div className="relative min-w-0 rounded-2xl overflow-hidden border border-white/[0.08] bg-black">
+                    <video
+                      autoPlay
+                      muted={selectedCameraOwnerId === currentUserId}
+                      playsInline
+                      className="absolute inset-0 w-full h-full object-contain bg-black"
+                      ref={(element) => {
+                        if (element) element.srcObject = selectedCameraStream;
+                      }}
+                    />
+                    <div className="absolute bottom-3 left-3 rounded-full border border-white/[0.1] bg-black/55 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-white/80 backdrop-blur-sm">
+                      Camera
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="h-[150px] overflow-hidden">
+                <RoomGrid
+                  layout={layout}
+                  room={room}
+                  isJoined={isJoined}
+                  currentUserIsHost={currentUserIsHost}
+                  currentUserIsModerator={currentUserIsModerator}
+                  currentUserId={currentUserId}
+                  localVideoStream={localVideoStream}
+                  remoteVideoStreams={remoteVideoStreams}
+                  screenShareStreams={screenShareStreams}
+                  onSelectScreenShare={selectScreenShare}
+                  onSelectCamera={selectCamera}
+                  compact
+                  isVideoEnabled={isVideoEnabled}
+                  startVideo={startVideo}
+                  stopVideo={stopVideo}
+                />
+              </div>
+            </div>
+          </div>
+        ) : selectedCameraStream ? (
+          <div className="flex-1 p-4 overflow-hidden">
+            <div className="h-full flex flex-col gap-3">
+              <div className="relative flex-1 min-h-[280px] rounded-2xl overflow-hidden border border-white/[0.08] bg-black">
+                <video
+                  autoPlay
+                  muted={selectedCameraOwnerId === currentUserId}
+                  playsInline
+                  className="absolute inset-0 w-full h-full object-contain bg-black"
+                  ref={(element) => {
+                    if (element) element.srcObject = selectedCameraStream;
+                  }}
+                />
+                <div className="absolute bottom-3 left-3 rounded-full border border-white/[0.1] bg-black/55 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/80 backdrop-blur-sm">
+                  Camera
+                </div>
+              </div>
+              <div className="h-[150px] overflow-hidden">
+                <RoomGrid
+                  layout={layout}
+                  room={room}
+                  isJoined={isJoined}
+                  currentUserIsHost={currentUserIsHost}
+                  currentUserIsModerator={currentUserIsModerator}
+                  currentUserId={currentUserId}
+                  localVideoStream={localVideoStream}
+                  remoteVideoStreams={remoteVideoStreams}
+                  screenShareStreams={screenShareStreams}
+                  onSelectScreenShare={selectScreenShare}
+                  onSelectCamera={selectCamera}
+                  compact
+                  isVideoEnabled={isVideoEnabled}
+                  startVideo={startVideo}
+                  stopVideo={stopVideo}
+                />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <RoomGrid
+            layout={layout}
+            room={room}
+            isJoined={isJoined}
+            currentUserIsHost={currentUserIsHost}
+            currentUserIsModerator={currentUserIsModerator}
+            currentUserId={currentUserId}
+            localVideoStream={localVideoStream}
+            remoteVideoStreams={remoteVideoStreams}
+            screenShareStreams={screenShareStreams}
+            onSelectScreenShare={selectScreenShare}
+            onSelectCamera={selectCamera}
+            isVideoEnabled={isVideoEnabled}
+            startVideo={startVideo}
+            stopVideo={stopVideo}
+          />
+        )}
         <ControlsBar
           currentUserIsHost={currentUserIsHost}
           currentUserIsModerator={currentUserIsModerator}
@@ -88,6 +213,9 @@ export default function RoomLayout({
           isVideoEnabled={isVideoEnabled}
           onStartVideo={startVideo}
           onStopVideo={stopVideo}
+          isScreenSharing={Boolean(currentUserId && screenShareStreams[currentUserId])}
+          onStartScreenShare={startScreenShare}
+          onStopScreenShare={stopScreenShare}
         />
       </div>
 

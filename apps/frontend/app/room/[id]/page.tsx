@@ -61,9 +61,17 @@ export default function VideoConference() {
     leaveRoom,
     localVideoStream,
     remoteVideoStreams,
+    screenShareStreams,
+    selectedScreenShareOwnerId,
+    selectedCameraOwnerId,
     isVideoEnabled,
     startVideo,
     stopVideo,
+    startScreenShare,
+    stopScreenShare,
+    selectScreenShare,
+    selectCamera,
+    // isScreenSharing,
   } = useRoomSocket({
     roomId,
     currentUserId: currentUser?.id,
@@ -199,9 +207,17 @@ export default function VideoConference() {
             currentUserId={currentUser?.id}
             localVideoStream={localVideoStream}
             remoteVideoStreams={remoteVideoStreams}
+            screenShareStreams={screenShareStreams}
+            selectedScreenShareOwnerId={selectedScreenShareOwnerId}
+            selectedCameraOwnerId={selectedCameraOwnerId}
             isVideoEnabled={isVideoEnabled}
             startVideo={startVideo}
             stopVideo={stopVideo}
+            startScreenShare={startScreenShare}
+            stopScreenShare={stopScreenShare}
+            selectScreenShare={selectScreenShare}
+            selectCamera={selectCamera}
+            // isScreenSharing={isScreenSharing}
           />
         </div>
       )}

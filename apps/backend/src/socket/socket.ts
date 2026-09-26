@@ -77,6 +77,21 @@ export const initializeSocket = (server: HttpServer) => {
       socket.to(roomId).emit("user-speaking", { roomId, userId, speaking });
     });
 
+    socket.on("screen-share-state", ({ roomId, userId, sharing, streamId }) => {
+      if (!roomId || !userId) return;
+
+      socket.data.isScreenSharing = Boolean(sharing);
+      socket.data.screenShareStreamId = sharing ? streamId : undefined;
+
+      io?.to(roomId).emit("screen-share-state", {
+        roomId,
+        userId,
+        userName: socket.data.userName ?? userId,
+        sharing: Boolean(sharing),
+        streamId,
+      });
+    });
+
     // mute user
     socket.on("user-mute-status", ({ roomId, userId, isUnMuted }) => {
       console.log(
@@ -102,6 +117,14 @@ export const initializeSocket = (server: HttpServer) => {
         });
       } catch (err) {
         console.error("Failed to remove member:", err);
+      }
+
+      if (socket.data.isScreenSharing) {
+        io?.to(roomId).emit("screen-share-state", {
+          roomId,
+          userId: memberId,
+          sharing: false,
+        });
       }
 
       io?.to(roomId).emit("user-left", {
@@ -521,6 +544,14 @@ export const initializeSocket = (server: HttpServer) => {
           roomId,
           memberId,
         });
+
+        if (socket.data.isScreenSharing) {
+          io?.to(roomId).emit("screen-share-state", {
+            roomId,
+            userId: memberId,
+            sharing: false,
+          });
+        }
 
         io?.to(roomId).emit("user-left", { roomId, memberId, socketId });
         emitRoomActivity(roomId, {

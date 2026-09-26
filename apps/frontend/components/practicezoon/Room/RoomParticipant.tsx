@@ -39,12 +39,16 @@ interface RoomParticipantProps {
   muteAllExcludedUsers?: string[];
   currentUserId?: string;
   videoStream: MediaStream | null;
+  screenShareStream: MediaStream | null;
+  onSelectScreenShare: (userId: string) => void;
+  onSelectCamera: (userId: string) => void;
   cameraEnabled: boolean;
   isVideoEnabled: boolean;
   onStartVideo: () => Promise<void>;
   onStopVideo: () => void;
   cameraDisabled: boolean;
   onToggleMemberCamera: (enabled: boolean) => void;
+  compact?: boolean;
 }
 
 export default function RoomParticipant({
@@ -61,12 +65,16 @@ export default function RoomParticipant({
   muteAllExcludedUsers = [],
   currentUserId,
   videoStream,
+  screenShareStream,
+  onSelectScreenShare,
+  onSelectCamera,
   cameraEnabled,
   isVideoEnabled,
   onStartVideo,
   onStopVideo,
   cameraDisabled,
   onToggleMemberCamera,
+  compact = false,
 }: RoomParticipantProps) {
   const volume = useAppSelector((state) => state.room.volumeLevels[member.id] ?? 0);
 
@@ -89,11 +97,17 @@ export default function RoomParticipant({
 
   const { forceMuteUser, forceUnmuteUser } = useAudio();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const screenShareVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (!videoRef.current) return;
     videoRef.current.srcObject = videoStream;
   }, [videoStream]);
+
+  useEffect(() => {
+    if (!screenShareVideoRef.current) return;
+    screenShareVideoRef.current.srcObject = screenShareStream;
+  }, [screenShareStream]);
 
   const canModerate = (currentUserIsHost || currentUserIsModerator) && !isHost;
   const canKick =
@@ -143,7 +157,7 @@ export default function RoomParticipant({
     <div
       className={`
         relative rounded-2xl overflow-hidden group transition-all duration-300
-        ${isLarge ? "aspect-[16/9]" : "aspect-video"}
+        ${compact ? "h-full w-[180px] min-w-[180px] aspect-auto" : isLarge ? "aspect-[16/9]" : "aspect-video"}
         ${roleBorderClass ? `ring-1 ${roleBorderClass}` : "ring-1 ring-white/[0.06]"}
       `}
       style={{
@@ -160,13 +174,40 @@ export default function RoomParticipant({
       />
 
       {videoStream && (
-        <video
-          ref={videoRef}
-          autoPlay
-          muted={member.id === currentUserId}
-          playsInline
-          className="absolute inset-0 w-full h-full object-cover"
-        />
+        <button
+          type="button"
+          onClick={() => onSelectCamera(member.id)}
+          className="absolute inset-0 z-[1] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+          title={`View ${member.name}'s camera`}
+        >
+          <video
+            ref={videoRef}
+            autoPlay
+            muted={member.id === currentUserId}
+            playsInline
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        </button>
+      )}
+
+      {screenShareStream && member.id !== currentUserId && (
+        <button
+          type="button"
+          onClick={() => onSelectScreenShare(member.id)}
+          className="absolute bottom-3 right-3 z-10 w-24 aspect-video overflow-hidden rounded-lg border border-white/30 bg-black/80 shadow-lg transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+          title={`View ${member.name}'s screen share`}
+        >
+          <video
+            ref={screenShareVideoRef}
+            autoPlay
+            muted
+            playsInline
+            className="h-full w-full object-cover"
+          />
+          <span className="absolute bottom-0 left-0 right-0 bg-black/65 px-1.5 py-1 text-left text-[9px] font-medium text-white/90">
+            Screen
+          </span>
+        </button>
       )}
 
       {!videoStream && <div className="absolute inset-0 flex items-center justify-center">
