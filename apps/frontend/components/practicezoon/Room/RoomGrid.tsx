@@ -86,17 +86,32 @@ export default function RoomGrid({
   startVideo: () => Promise<void>;
   stopVideo: () => void;
 }) {
-  const {
-    unMutedUsers,
-    speakingUsers,
-    forceMutedUsers,
-    muteAll,
-    muteAllExcludedUsers,
-    moderatorIds,
-    cameraEnabled,
-    cameraDisabledMemberIds,
-    cameraAllowedMemberIds,
-  } = useAppSelector((state) => state.room);
+  // const {
+  //   unMutedUsers,
+  //   speakingUsers,
+  //   forceMutedUsers,
+  //   muteAll,
+  //   muteAllExcludedUsers,
+  //   moderatorIds,
+  //   cameraEnabled,
+  //   cameraDisabledMemberIds,
+  //   cameraAllowedMemberIds,
+  // } = useAppSelector((state) => state.room);
+  const unMutedUsers = useAppSelector((state) => state.room.unMutedUsers);
+  const speakingUsers = useAppSelector((state) => state.room.speakingUsers);
+  const forceMutedUsers = useAppSelector((state) => state.room.forceMutedUsers);
+  const muteAll = useAppSelector((state) => state.room.muteAll);
+  const muteAllExcludedUsers = useAppSelector(
+    (state) => state.room.muteAllExcludedUsers,
+  );
+  const moderatorIds = useAppSelector((state) => state.room.moderatorIds);
+  const cameraEnabled = useAppSelector((state) => state.room.cameraEnabled);
+  const cameraDisabledMemberIds = useAppSelector(
+    (state) => state.room.cameraDisabledMemberIds,
+  );
+  const cameraAllowedMemberIds = useAppSelector(
+    (state) => state.room.cameraAllowedMemberIds,
+  );
   useSpeakingEvents(room?.id || "");
   const recentlyJoinedIds = useRecentlyJoined(room?.members ?? []);
 
