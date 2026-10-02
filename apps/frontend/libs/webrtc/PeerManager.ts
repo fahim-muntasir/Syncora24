@@ -122,17 +122,20 @@ export class PeerManager {
   async addTracksToConnection(
     socketId: string,
     stream: MediaStream,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const pc = this.peers.get(socketId);
-    if (!pc) return;
+    if (!pc) return false;
 
+    let added = false;
     const senders = pc.getSenders();
     for (const track of stream.getTracks()) {
       const alreadySending = senders.some((s) => s.track?.id === track.id);
       if (!alreadySending) {
         pc.addTrack(track, stream);
+        added = true;
       }
     }
+    return added;
   }
 
   async createOffer(socketId: string): Promise<void> {
@@ -270,19 +273,30 @@ export class PeerManager {
     this.iceCandidateBuffer.set(socketId, []);
   }
 
+  private hasUnnegotiatedSender(pc: RTCPeerConnection): boolean {
+    return pc
+      .getTransceivers()
+      .some((transceiver) => transceiver.sender.track !== null && transceiver.mid === null);
+  }
+
   async renegotiateAll(
     stream: MediaStream | null,
     screenShareStream: MediaStream | null = null,
   ): Promise<void> {
     console.log(`[PeerManager] Renegotiating with ${this.peers.size} peers`);
-    for (const socketId of this.peers.keys()) {
+    for (const socketId of [...this.peers.keys()]) {
+      const pc = this.peers.get(socketId);
+      if (!pc) continue;
+
+      let changed = false;
       if (stream) {
-        await this.addTracksToConnection(socketId, stream);
+        changed = (await this.addTracksToConnection(socketId, stream)) || changed;
       }
       if (screenShareStream) {
-        const pc = this.peers.get(socketId);
-        if (pc) this.addScreenShareTracks(pc, screenShareStream);
+        changed = this.addScreenShareTracks(pc, screenShareStream) || changed;
       }
+
+      if (!changed && !this.hasUnnegotiatedSender(pc)) continue;
       await this.createOffer(socketId);
     }
   }
@@ -315,7 +329,8 @@ export class PeerManager {
   private addScreenShareTracks(
     pc: RTCPeerConnection,
     stream: MediaStream,
-  ): void {
+  ): boolean {
+    let added = false;
     for (const track of stream.getVideoTracks()) {
       const alreadySending = pc
         .getSenders()
@@ -324,8 +339,10 @@ export class PeerManager {
       if (!alreadySending) {
         pc.addTrack(track, stream);
         this.screenShareTrackIds.add(track.id);
+        added = true;
       }
     }
+    return added;
   }
 
   async removeScreenShareTracks(): Promise<void> {
