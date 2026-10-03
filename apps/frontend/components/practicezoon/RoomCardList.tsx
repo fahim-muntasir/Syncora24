@@ -1,11 +1,12 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { RoomCard } from "./RoomCard";
 import { RoomType } from "@/types/room";
 import { useGetRoomsQuery } from "@/libs/features/room/roomApiSlice";
 import { socketManager } from "@/libs/socket/index";
 import { isRoomsResponse } from "@/utils/typeGuardsForRoom";
 import EmptyRoomCard from "../common/EmptyRoomCard";
+import { useAppSelector } from "@/libs/hooks";
 
 function RoomCardSkeleton() {
   return (
@@ -40,6 +41,32 @@ export default function RoomCardList() {
   });
   const [rooms, setRooms] = useState<RoomType[]>([]);
   const [mounted, setMounted] = useState(false);
+  const searchKeywords = useAppSelector(
+    (state) => state.filter.searchKeywords,
+  );
+  const filteredRooms = useMemo(() => {
+    const keywords = searchKeywords.map((keyword) =>
+      keyword.toLowerCase(),
+    );
+
+    if (keywords.length === 0) return rooms;
+
+    return rooms.filter((room) => {
+      const searchableValues = [
+        room.id,
+        room.title,
+        // room.description,
+        // room.hostId,
+        room.language,
+        room.level,
+        ...room.members.flatMap((member) => [member.id, member.name]),
+      ].map((value) => value.toLowerCase());
+
+      return keywords.some((keyword) =>
+        searchableValues.some((value) => value.includes(keyword)),
+      );
+    });
+  }, [rooms, searchKeywords]);
 
   useEffect(() => {
     setMounted(true);
@@ -132,7 +159,20 @@ export default function RoomCardList() {
     );
   }
 
-  if (!rooms || rooms.length === 0) return <EmptyRoomCard />;
+  if (rooms.length === 0) return <EmptyRoomCard />;
+
+  if (filteredRooms.length === 0) {
+    return (
+      <div className="mt-8 flex min-h-[240px] flex-col items-center justify-center rounded-2xl border border-white/[0.06] bg-[#161616] px-6 text-center">
+        <h2 className="text-white font-semibold text-base">No matching rooms</h2>
+        <p className="mt-2 text-sm text-gray-500">
+          Try another keyword or remove a search filter.
+        </p>
+      </div>
+    );
+  }
+
+  console.log("Filtered Rooms:", filteredRooms); // Debugging line
 
   return (
     <div className="mt-8">
@@ -141,14 +181,14 @@ export default function RoomCardList() {
         <div className="flex items-center gap-3">
           <h2 className="text-white font-semibold text-base">Available Rooms</h2>
           <span className="text-xs text-gray-500 bg-white/[0.05] border border-white/[0.07] px-2.5 py-1 rounded-full">
-            {rooms.length} {rooms.length === 1 ? 'room' : 'rooms'}
+            {filteredRooms.length} {filteredRooms.length === 1 ? 'room' : 'rooms'}
           </span>
         </div>
       </div>
 
       {/* Card grid with staggered entrance */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {rooms.map((room, index) => (
+        {filteredRooms.map((room, index) => (
           <div
             key={room.id}
             className="transition-all duration-500"

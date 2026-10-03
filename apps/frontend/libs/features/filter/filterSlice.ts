@@ -1,37 +1,45 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 
 type InitialState = {
-  searchQuery: string;
-  Category: string;
-  Difficulty: string;
-  Duration: string;
+  searchKeywords: string[];
 };
 
 export const initialState: InitialState = {
-  searchQuery: "",
-  Category: "",
-  Difficulty: "",
-  Duration: "",
+  searchKeywords: [],
 };
 
 const filterSlice = createSlice({
   name: "filter",
   initialState,
   reducers: {
-    search: (state, action: PayloadAction<string>) => {
-      state.searchQuery = action.payload;
+    addSearchKeyword: (state, action: PayloadAction<string>) => {
+      const keyword = action.payload.trim();
+
+      if (
+        keyword &&
+        !state.searchKeywords.some(
+          (existingKeyword) =>
+            existingKeyword.toLowerCase() === keyword.toLowerCase(),
+        )
+      ) {
+        state.searchKeywords.push(keyword);
+      }
     },
-    filterByCategory: (state, action: PayloadAction<string>) => {
-      state.Category = action.payload;
+    removeSearchKeyword: (state, action: PayloadAction<string>) => {
+      state.searchKeywords = state.searchKeywords.filter(
+        (keyword) =>
+          keyword.toLowerCase() !== action.payload.toLowerCase(),
+      );
     },
-    filterByDifficulty: (state, action: PayloadAction<string>) => {
-      state.Difficulty = action.payload;
-    },
-    filterByDuration: (state, action: PayloadAction<string>) => {
-      state.Duration = action.payload;
-    },
+    clearSearchKeywords: (state) => {
+      state.searchKeywords = [];
+    }
   },
 });
 
 export default filterSlice.reducer;
-export const { search, filterByCategory, filterByDifficulty, filterByDuration } = filterSlice.actions;
+export const {
+  addSearchKeyword,
+  removeSearchKeyword,
+  clearSearchKeywords,
+} = filterSlice.actions;
