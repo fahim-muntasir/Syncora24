@@ -59,12 +59,12 @@ export class SocketManager {
     });
     this.socket.on("disconnect", (reason) => {
       console.warn(`[SocketManager] Disconnected: ${reason}`);
-      this.setState("disconnected");
+      this.setState("reconnecting");
     });
     this.socket.on("reconnect_attempt", () => this.setState("reconnecting"));
     this.socket.on("connect_error", (err) => {
       console.error("[SocketManager] Connection error:", err.message);
-      this.setState("error");
+      this.setState("reconnecting");
     });
     this.socket.on("reconnect", () => {
       console.info("[SocketManager] Reconnected.");

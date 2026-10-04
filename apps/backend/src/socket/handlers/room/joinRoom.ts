@@ -43,6 +43,9 @@ export const handleJoinRoom = async (
     
     // Get participants BEFORE adding this socket to the Socket.IO room.
     const existingSockets = await io.in(roomId).fetchSockets();
+    const userAlreadyConnected = existingSockets.some(
+      (existingSocket) => existingSocket.data.userId === user.id,
+    );
 
     const existingUsers = existingSockets
       .filter((existingSocket) => existingSocket.id !== socket.id)
@@ -53,7 +56,14 @@ export const handleJoinRoom = async (
         },
         socketId: existingSocket.id,
       }))
-      .filter((item) => item.user.id);
+      .filter(
+        (item, index, participants) =>
+          item.user.id &&
+          item.user.id !== user.id &&
+          participants.findIndex(
+            (participant) => participant.user.id === item.user.id,
+          ) === index,
+      );
 
     await socket.join(roomId);
 
@@ -99,14 +109,16 @@ export const handleJoinRoom = async (
 
     
     // Notify existing realtime participants.
-    socket.to(roomId).emit("user-joined", {
-      roomId,
-      user: {
-        id: user.id,
-        name: user.name,
-      },
-      socketId: socket.id,
-    });
+    if (!userAlreadyConnected) {
+      socket.to(roomId).emit("user-joined", {
+        roomId,
+        user: {
+          id: user.id,
+          name: user.name,
+        },
+        socketId: socket.id,
+      });
+    }
 
     if (memberResult.added) {
       io.emit("joinedMember", {
