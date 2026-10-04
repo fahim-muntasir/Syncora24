@@ -1,5 +1,10 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 
+export type ParticipantConnectionState =
+  | "connected"
+  | "reconnecting"
+  | "disconnected";
+
 interface RoomState {
   isAudioEnabled: boolean;
   isMuted: boolean;
@@ -14,6 +19,7 @@ interface RoomState {
   cameraDisabledMemberIds: string[];
   cameraAllowedMemberIds: string[];
   volumeLevels: Record<string, number>;
+  participantConnectionStates: Record<string, ParticipantConnectionState>;
 }
 
 const initialState: RoomState = {
@@ -30,6 +36,7 @@ const initialState: RoomState = {
   cameraDisabledMemberIds: [],
   cameraAllowedMemberIds: [],
   volumeLevels: {},
+  participantConnectionStates: {},
 };
 
 const roomSlice = createSlice({
@@ -150,6 +157,21 @@ const roomSlice = createSlice({
     removeVolumeLevel: (state, action: PayloadAction<string>) => {
       delete state.volumeLevels[action.payload];
     },
+    setParticipantConnectionState: (
+      state,
+      action: PayloadAction<{
+        userId: string;
+        state: ParticipantConnectionState;
+      }>,
+    ) => {
+      state.participantConnectionStates[action.payload.userId] = action.payload.state;
+    },
+    removeParticipantConnectionState: (
+      state,
+      action: PayloadAction<string>,
+    ) => {
+      delete state.participantConnectionStates[action.payload];
+    },
 
     clearVolumeLevels: (state) => {
       state.volumeLevels = {};
@@ -188,6 +210,8 @@ export const {
   setVolumeLevel,
   removeVolumeLevel,
   clearVolumeLevels,
+  setParticipantConnectionState,
+  removeParticipantConnectionState,
 } = roomSlice.actions;
 
 export default roomSlice.reducer;

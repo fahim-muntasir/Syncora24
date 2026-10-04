@@ -32,6 +32,7 @@ export class PeerManager {
   private iceCandidateBuffer: Map<string, RTCIceCandidateInit[]> = new Map();
   private signalingQueues: Map<string, Promise<void>> = new Map();
   private screenShareTrackIds = new Set<string>();
+  private restartingPeers = new Set<string>();
 
   constructor(
     private readonly roomId: string, 
@@ -105,12 +106,26 @@ export class PeerManager {
       const state = pc.connectionState;
       console.log(`[PeerManager] Connection state with ${socketId}: ${state}`);
       if (state === "connected") {
+        this.restartingPeers.delete(socketId);
         this.fireEvent("connected", socketId);
       } else if (state === "disconnected") {
         this.fireEvent("disconnected", socketId);
       } else if (state === "failed") {
         this.fireEvent("failed", socketId);
-        this.closeConnection(socketId);
+        this.restartIce(socketId);
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      const state = pc.iceConnectionState;
+      console.log(`[PeerManager] ICE state with ${socketId}: ${state}`);
+      if (state === "connected" || state === "completed") {
+        this.restartingPeers.delete(socketId);
+      } else if (state === "disconnected") {
+        this.fireEvent("disconnected", socketId);
+      } else if (state === "failed") {
+        this.fireEvent("failed", socketId);
+        this.restartIce(socketId);
       }
     };
 
@@ -153,6 +168,42 @@ export class PeerManager {
         console.log(`[PeerManager] Sent offer to ${socketId}`);
       } catch (err) {
         console.error(`[PeerManager] createOffer failed for ${socketId}:`, err);
+      }
+    });
+  }
+
+  private restartIce(socketId: string): void {
+    if (this.restartingPeers.has(socketId)) return;
+    this.restartingPeers.add(socketId);
+
+    void this.enqueueSignaling(socketId, async () => {
+      const pc = this.peers.get(socketId);
+      if (!pc || pc.connectionState === "closed") {
+        this.restartingPeers.delete(socketId);
+        return;
+      }
+
+      try {
+        if (pc.signalingState === "have-local-offer") {
+          await pc.setLocalDescription({ type: "rollback" });
+        }
+        if (pc.signalingState !== "stable") {
+          this.restartingPeers.delete(socketId);
+          return;
+        }
+
+        pc.restartIce();
+        const offer = await pc.createOffer({
+          iceRestart: true,
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true,
+        });
+        await pc.setLocalDescription(offer);
+        socketManager.emit("offer", { to: socketId, offer });
+        console.log(`[PeerManager] Sent ICE restart offer to ${socketId}`);
+      } catch (error) {
+        this.restartingPeers.delete(socketId);
+        console.error(`[PeerManager] ICE restart failed for ${socketId}:`, error);
       }
     });
   }
@@ -366,6 +417,7 @@ export class PeerManager {
       pc.ontrack = null;
       pc.onicecandidate = null;
       pc.onconnectionstatechange = null;
+      pc.oniceconnectionstatechange = null;
       pc.close();
       this.peers.delete(socketId);
     }
@@ -380,6 +432,7 @@ export class PeerManager {
 
     this.iceCandidateBuffer.delete(socketId);
     this.signalingQueues.delete(socketId);
+    this.restartingPeers.delete(socketId);
   }
 
   closeAll(): void {

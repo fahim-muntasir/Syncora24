@@ -14,6 +14,7 @@ import {
   clearUnMutedUsersExcept,
   setVolumeLevel,
   removeVolumeLevel,
+  removeUnMutedUser,
   setCameraEnabled,
   setCameraDisabledMemberIds,
   addCameraDisabledMemberId,
@@ -21,6 +22,8 @@ import {
   setCameraAllowedMemberIds,
   addCameraAllowedMemberId,
   removeCameraAllowedMemberId,
+  setParticipantConnectionState,
+  removeParticipantConnectionState,
 } from "@/libs/features/room/roomSlice";
 import { useAppDispatch, useAppSelector } from "@/libs/hooks";
 import { useLazyGetIceServersQuery } from "@/libs/features/webrtc/webrtcApiSlice";
@@ -351,6 +354,12 @@ export function useRoomSocket({
       });
 
       hasJoinedRef.current = true;
+      dispatch(
+        setParticipantConnectionState({
+          userId: currentUserId,
+          state: "connected",
+        }),
+      );
 
       console.log(`[useRoomSocket] Successfully joined room ${roomId}`);
     } catch (error) {
@@ -380,6 +389,99 @@ export function useRoomSocket({
   ]);
 
   useEffect(() => {
+    if (!roomId || !currentUserId) return;
+
+    const initialState = socketManager.getConnectionState();
+    let wasReconnecting = initialState === "reconnecting";
+    let hasConnected =
+      initialState === "connected" || wasReconnecting;
+
+    const unsubscribe = socketManager.onStateChange((state) => {
+      if (state === "reconnecting") {
+        wasReconnecting = true;
+        if (hasJoinedRef.current) {
+          dispatch(
+            setParticipantConnectionState({
+              userId: currentUserId,
+              state: "reconnecting",
+            }),
+          );
+        }
+        return;
+      }
+
+      if (state === "disconnected") {
+        if (hasJoinedRef.current) {
+          dispatch(
+            setParticipantConnectionState({
+              userId: currentUserId,
+              state: "disconnected",
+            }),
+          );
+        }
+        return;
+      }
+
+      if (state !== "connected") return;
+      if (!hasConnected) {
+        hasConnected = true;
+        return;
+      }
+      if (!wasReconnecting) return;
+
+      wasReconnecting = false;
+      if (!hasJoinedRef.current || joiningRef.current) return;
+
+      joiningRef.current = true;
+      void socketManager
+        .emitWithAck<{
+          success: boolean;
+          message?: string;
+          code?: string;
+        }>("join-room", {
+          roomId,
+          user: {
+            id: currentUserId,
+            name: currentUserName,
+          },
+        })
+        .then(() => {
+          dispatch(
+            setParticipantConnectionState({
+              userId: currentUserId,
+              state: "connected",
+            }),
+          );
+
+          const screenShareStream = screenShareStreamRef.current;
+          if (screenShareStream) {
+            socketManager.emit("screen-share-state", {
+              roomId,
+              userId: currentUserId,
+              sharing: true,
+              streamId: screenShareStream.id,
+            });
+          }
+        })
+        .catch((error: unknown) => {
+          console.error("[useRoomSocket] Failed to restore room membership:", error);
+          dispatch(
+            setParticipantConnectionState({
+              userId: currentUserId,
+              state: "disconnected",
+            }),
+          );
+          toast.error("Unable to restore your room connection.");
+        })
+        .finally(() => {
+          joiningRef.current = false;
+        });
+    });
+
+    return unsubscribe;
+  }, [currentUserId, currentUserName, dispatch, roomId]);
+
+  useEffect(() => {
     if (!roomId) return;
 
     return socketManager.on("room-member-kicked", (payload: unknown) => {
@@ -391,6 +493,7 @@ export function useRoomSocket({
       peerManagerRef.current?.closeAll();
       peerManagerRef.current = null;
       hasJoinedRef.current = false;
+      dispatch(removeParticipantConnectionState(currentUserId ?? ""));
       dispatch(addKickedMemberId(data.memberId));
       onKicked?.();
     });
@@ -406,9 +509,10 @@ export function useRoomSocket({
     peerManagerRef.current?.closeAll();
     peerManagerRef.current = null;
     hasJoinedRef.current = false;
+    dispatch(removeParticipantConnectionState(currentUserId));
 
     console.log(`[useRoomSocket] Left room ${roomId}`);
-  }, [roomId, currentUserId, stopAudio, stopVideo]);
+  }, [roomId, currentUserId, stopAudio, stopVideo, dispatch]);
 
   // ── user-joined / user-left ─────────────────────────────────────────────────
 
@@ -433,6 +537,12 @@ export function useRoomSocket({
             participant.socketId,
             participant.user.id,
           );
+          dispatch(
+            setParticipantConnectionState({
+              userId: participant.user.id,
+              state: "connected",
+            }),
+          );
 
           console.log(
             `[useRoomSocket] Existing participant mapped: ${participant.user.name} (${participant.socketId})`,
@@ -444,12 +554,28 @@ export function useRoomSocket({
     const unsubJoined = socketManager.on(
       "user-joined",
       async (payload: unknown) => {
-        const { user, socketId } = payload as {
+        const { roomId: eventRoomId, user, socketId } = payload as {
+          roomId: string;
           user: RoomUser;
           socketId: string;
         };
 
+        if (eventRoomId !== roomId || user.id === currentUserId) return;
+
+        for (const [previousSocketId, previousUserId] of socketToUserRef.current) {
+          if (previousUserId === user.id && previousSocketId !== socketId) {
+            peerManagerRef.current?.closeConnection(previousSocketId);
+            socketToUserRef.current.delete(previousSocketId);
+          }
+        }
+
         socketToUserRef.current.set(socketId, user.id);
+        dispatch(
+          setParticipantConnectionState({
+            userId: user.id,
+            state: "connected",
+          }),
+        );
 
         console.log(`[useRoomSocket] user-joined: ${user.name} (${socketId})`);
 
@@ -464,7 +590,7 @@ export function useRoomSocket({
 
         if (socketId === mySocketId) return;
 
-        const pc = peerManagerRef.current.createConnection(
+        peerManagerRef.current.createConnection(
           socketId,
           getLocalMediaStream(),
           screenShareStreamRef.current,
@@ -474,11 +600,32 @@ export function useRoomSocket({
       },
     );
 
+    const unsubConnectionState = socketManager.on(
+      "participant-connection-state",
+      (payload: unknown) => {
+        const event = payload as {
+          roomId: string;
+          userId: string;
+          state: "connected" | "reconnecting" | "disconnected";
+        };
+        if (event.roomId !== roomId) return;
+        dispatch(
+          setParticipantConnectionState({
+            userId: event.userId,
+            state: event.state,
+          }),
+        );
+      },
+    );
+
     const unsubLeft = socketManager.on("user-left", (payload: unknown) => {
-      const { memberId, socketId } = payload as {
+      const { roomId: eventRoomId, memberId, socketId } = payload as {
+        roomId: string;
         memberId: string;
         socketId: string;
       };
+
+      if (eventRoomId !== roomId) return;
 
       const userId = socketToUserRef.current.get(socketId);
       socketToUserRef.current.delete(socketId);
@@ -504,6 +651,8 @@ export function useRoomSocket({
       }
 
       dispatch(removeVolumeLevel(memberId));
+      dispatch(removeUnMutedUser(memberId));
+      dispatch(removeParticipantConnectionState(memberId));
 
       console.log(`[useRoomSocket] user-left: ${memberId}`);
 
@@ -518,9 +667,17 @@ export function useRoomSocket({
     return () => {
       unsubParticipants();
       unsubJoined();
+      unsubConnectionState();
       unsubLeft();
     };
-  }, [roomId, onUserJoined, onUserLeft, dispatch, getLocalMediaStream]);
+  }, [
+    roomId,
+    currentUserId,
+    onUserJoined,
+    onUserLeft,
+    dispatch,
+    getLocalMediaStream,
+  ]);
 
   // ── WebRTC signaling ────────────────────────────────────────────────────────
   useEffect(() => {

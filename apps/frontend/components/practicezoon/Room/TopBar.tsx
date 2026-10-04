@@ -12,21 +12,11 @@ interface TopBarProps {
   currentUserIsModerator?: boolean;
 }
 
-// Simulated connection quality — in real use, derive from WebRTC stats
-type ConnectionQuality = "good" | "fair" | "poor";
-
-
 const levelConfig: Record<string, { bg: string; text: string; border: string }> = {
   Beginner:     { bg: "bg-emerald-500/10", text: "text-emerald-400", border: "border-emerald-500/20" },
   Intermediate: { bg: "bg-amber-500/10",   text: "text-amber-400",   border: "border-amber-500/20"   },
   Advanced:     { bg: "bg-orange-500/10",  text: "text-orange-400",  border: "border-orange-500/20"  },
   Native:       { bg: "bg-blue-500/10",    text: "text-blue-400",    border: "border-blue-500/20"    },
-};
-
-const connectionConfig: Record<ConnectionQuality, { color: string; bg: string; border: string; label: string; bars: number }> = {
-  good: { color: "text-green-400", bg: "bg-green-500/10", border: "border-green-500/20", label: "Connected", bars: 3 },
-  fair: { color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20", label: "Fair signal", bars: 2 },
-  poor: { color: "text-red-400",   bg: "bg-red-500/10",   border: "border-red-500/20",   label: "Weak signal", bars: 1 },
 };
 
 export default function TopBar({
@@ -36,11 +26,9 @@ export default function TopBar({
 }: TopBarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [isRoomLocked, setIsRoomLocked] = useState(false);
-  const [connectionQuality] = useState<ConnectionQuality>("good");
   const menuRef = useRef<HTMLDivElement>(null);
 
   const level = room?.level ? (levelConfig[room.level] ?? levelConfig.Beginner) : null;
-  const conn = connectionConfig[connectionQuality];
 
   // Close menu on outside click
   useEffect(() => {
@@ -112,12 +100,6 @@ export default function TopBar({
 
       {/* ── RIGHT: Status + actions ──────────────────── */}
       <div className="flex items-center gap-2 flex-shrink-0">
-        {/* Connection quality */}
-        <div className={`hidden sm:flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border ${conn.color} ${conn.bg} ${conn.border}`}>
-          <Signal size={11} />
-          <span>{conn.label}</span>
-        </div>
-
         {/* Moderator quick-action (mod only, not host) */}
         {currentUserIsModerator && !currentUserIsHost && (
           <button
