@@ -77,6 +77,27 @@ export default function RoomParticipant({
   compact = false,
 }: RoomParticipantProps) {
   const volume = useAppSelector((state) => state.room.volumeLevels[member.id] ?? 0);
+  const connectionState = useAppSelector(
+    (state) =>
+      state.room.participantConnectionStates[member.id] ?? "connected",
+  );
+  const connectionStatus = {
+    connected: {
+      label: "Connected",
+      className: "text-green-400",
+      dotClassName: "bg-green-400",
+    },
+    reconnecting: {
+      label: "Reconnecting...",
+      className: "text-amber-400",
+      dotClassName: "bg-amber-400 animate-pulse",
+    },
+    disconnected: {
+      label: "Disconnected",
+      className: "text-red-400",
+      dotClassName: "bg-red-400",
+    },
+  }[connectionState];
 
   const avatarSvg = member.avatar || generateIdenticonAvatar(member.name, 60);
 
@@ -399,28 +420,41 @@ export default function RoomParticipant({
         </div>
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 px-3 py-2.5">
-        <div className="flex items-center justify-between gap-2">
+      <div className="absolute bottom-0 left-0 right-0 px-3 py-2.5 bg-gradient-to-t from-black/70 to-transparent">
+        <div className="flex items-end justify-between gap-2">
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <span className="text-white text-xs font-semibold truncate">
-              {member.name}
-            </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-white text-xs font-semibold truncate">
+                  {member.name}
+                </span>
 
-            {isHost && (
-              <Crown
-                size={12}
-                className="text-amber-400 flex-shrink-0"
-                strokeWidth={2}
-              />
-            )}
+                {isHost && (
+                  <Crown
+                    size={12}
+                    className="text-amber-400 flex-shrink-0"
+                    strokeWidth={2}
+                  />
+                )}
 
-            {isModerator && !isHost && (
-              <ShieldCheck
-                size={12}
-                className="text-blue-400 flex-shrink-0"
-                strokeWidth={2}
-              />
-            )}
+                {isModerator && !isHost && (
+                  <ShieldCheck
+                    size={12}
+                    className="text-blue-400 flex-shrink-0"
+                    strokeWidth={2}
+                  />
+                )}
+              </div>
+              <span
+                className={`mt-0.5 flex items-center gap-1 text-[10px] ${connectionStatus.className}`}
+                role="status"
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${connectionStatus.dotClassName}`}
+                />
+                {connectionStatus.label}
+              </span>
+            </div>
           </div>
 
           {isSpeaking && isUnMuted && (

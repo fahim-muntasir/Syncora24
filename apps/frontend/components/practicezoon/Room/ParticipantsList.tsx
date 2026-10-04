@@ -8,6 +8,7 @@ import { RoomType } from "@/types/room";
 import Image from "next/image";
 import { generateIdenticonAvatar } from "@/utils/generateAvatar";
 import { useAudio } from "@/context/AudioContext";
+import type { ParticipantConnectionState } from "@/libs/features/room/roomSlice";
 
 export default function ParticipantsList({
   room,
@@ -37,6 +38,9 @@ export default function ParticipantsList({
   );
 
   const moderatorIds = useAppSelector((state) => state.room.moderatorIds);
+  const participantConnectionStates = useAppSelector(
+    (state) => state.room.participantConnectionStates,
+  );
   const currentUserIsModerator = currentUser?.id ? moderatorIds.includes(currentUser.id) : false;
 
   const { toggleMute } = useAudio();
@@ -133,6 +137,13 @@ export default function ParticipantsList({
     const isMuted = !isUnMuted;
 
     const isSelf = member.id === currentUser?.id;
+    const connectionState: ParticipantConnectionState =
+      participantConnectionStates[member.id] ?? "connected";
+    const connectionLabel = {
+      connected: "Connected",
+      reconnecting: "Reconnecting...",
+      disconnected: "Disconnected",
+    }[connectionState];
 
     const canModerate = canModerateMember(member.id);
 
@@ -181,6 +192,18 @@ export default function ParticipantsList({
           <div className="flex items-center gap-1">
             <span className={`text-[10px] font-medium ${roleColor}`}>
               {roleLabel}
+            </span>
+            <span
+              className={`text-[9px] ${
+                connectionState === "connected"
+                  ? "text-green-400/70"
+                  : connectionState === "reconnecting"
+                    ? "text-amber-400"
+                    : "text-red-400"
+              }`}
+              role="status"
+            >
+              · {connectionLabel}
             </span>
 
             {isForceMuted && (
