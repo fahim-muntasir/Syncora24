@@ -6,7 +6,7 @@ import ControlsBar from "./ControlsBar";
 import SidePanel from "./SidePanel";
 import StreamVideo from "./StreamVideo";
 import { useAppSelector } from "@/libs/hooks";
-import { socketManager } from "@/libs/socket";
+import { roomSocketManager } from "@/libs/socket";
 
 export default function RoomLayout({
   room,
@@ -228,7 +228,7 @@ export default function RoomLayout({
             Boolean(currentUserId && cameraAllowedMemberIds.includes(currentUserId))
           }
           onToggleCameraAccess={() =>
-            socketManager.emit("moderator-set-camera", {
+            roomSocketManager.emit("moderator-set-camera", {
               roomId: room?.id,
               cameraEnabled: !cameraEnabled,
             })

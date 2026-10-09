@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useGetSingleRoomQuery, roomApiSlice } from "@/libs/features/room/roomApiSlice";
 import { useAppSelector, useAppDispatch } from "@/libs/hooks";
-import { socketManager } from "@/libs/socket/index";
+import { publicSocketManager } from "@/libs/socket/index";
 import { generateIdenticonAvatar } from "@/utils/generateAvatar";
 import { RoomType } from "@/types/room";
 
@@ -45,7 +45,12 @@ export default function RoomDetailsModal({
   const router = useRouter();
   const { id } = useParams();
   const roomId = Array.isArray(id) ? id[0] : id;
-  const { data: roomResponse, isLoading: isRoomLoading, isFetching } = useGetSingleRoomQuery(roomId || "", { skip: !roomId });
+  const {
+    data: roomResponse,
+    isLoading: isRoomLoading,
+    isFetching,
+    refetch,
+  } = useGetSingleRoomQuery(roomId || "", { skip: !roomId });
 
   const roomData = roomResponse?.data;
   const level = levelConfig[roomData?.level as keyof typeof levelConfig] ?? levelConfig.Beginner;
@@ -54,8 +59,8 @@ export default function RoomDetailsModal({
   const moderatorIds = useAppSelector((state) => state.room.moderatorIds);
 
   useEffect(() => {
-    const unsubJoined = socketManager.on(
-      "joinedMember",
+    const unsubJoined = publicSocketManager.on(
+      "public-room-member-joined",
       (payload: unknown) => {
         const data = payload as {
           roomId: string;
@@ -83,17 +88,18 @@ export default function RoomDetailsModal({
             }
           )
         );
+        void refetch();
       }
     );
 
     return () => {
       unsubJoined?.();
     };
-  }, [dispatch, roomId]);
+  }, [dispatch, refetch, roomId]);
 
   useEffect(() => {
-    const unsubRemoved = socketManager.on(
-      "removedMember",
+    const unsubRemoved = publicSocketManager.on(
+      "public-room-member-removed",
       (payload: unknown) => {
         const data = payload as {
           roomId: string;
@@ -115,13 +121,14 @@ export default function RoomDetailsModal({
             }
           )
         );
+        void refetch();
       }
     );
 
     return () => {
       unsubRemoved?.();
     };
-  }, [dispatch, roomId]);
+  }, [dispatch, refetch, roomId]);
 
   const joinRoomHandler = async () => {
     if (!roomId) {
@@ -148,21 +155,20 @@ export default function RoomDetailsModal({
 
       onClose();
     } catch (error) {
-      console.error(
-        "Join room failed:",
-        error,
-      );
-
       const message =
         error instanceof Error
           ? error.message
           : "Failed to join room.";
 
-      if (
+      const isMemberKicked =
         error instanceof Error &&
-        (error as Error & { code?: string }).code === "MEMBER_KICKED"
-      ) {
+        "code" in error &&
+        error.code === "MEMBER_KICKED";
+
+      if (isMemberKicked) {
         onKicked();
+      } else {
+        console.error("Join room failed:", error);
       }
 
       toast.error(message, {

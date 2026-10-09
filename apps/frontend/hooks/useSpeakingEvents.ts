@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { socketManager } from "@/libs/socket/index";
+import { roomSocketManager } from "@/libs/socket/index";
 import { useAppDispatch } from "@/libs/hooks";
 import {
   setSpeakingUser,
@@ -27,7 +27,7 @@ export function useSpeakingEvents(roomId: string) {
       }
     };
 
-    const unsubSpeaking = socketManager.on("user-speaking", (payload: unknown) => {
+    const unsubSpeaking = roomSocketManager.on("user-speaking", (payload: unknown) => {
       const data = payload as {
         roomId: string;
         userId: string;

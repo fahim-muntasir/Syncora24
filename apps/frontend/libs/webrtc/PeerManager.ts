@@ -1,4 +1,4 @@
-import { socketManager } from "@/libs/socket/index";
+import { roomSocketManager } from "@/libs/socket/index";
 
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
@@ -91,7 +91,7 @@ export class PeerManager {
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        socketManager.emit("ice-candidate", {
+        roomSocketManager.emit("ice-candidate", {
           to: socketId,
           candidate: event.candidate,
         });
@@ -164,7 +164,7 @@ export class PeerManager {
           offerToReceiveVideo: true,
         });
         await pc.setLocalDescription(offer);
-        socketManager.emit("offer", { to: socketId, offer });
+        roomSocketManager.emit("offer", { to: socketId, offer });
         console.log(`[PeerManager] Sent offer to ${socketId}`);
       } catch (err) {
         console.error(`[PeerManager] createOffer failed for ${socketId}:`, err);
@@ -199,7 +199,7 @@ export class PeerManager {
           offerToReceiveVideo: true,
         });
         await pc.setLocalDescription(offer);
-        socketManager.emit("offer", { to: socketId, offer });
+        roomSocketManager.emit("offer", { to: socketId, offer });
         console.log(`[PeerManager] Sent ICE restart offer to ${socketId}`);
       } catch (error) {
         this.restartingPeers.delete(socketId);
@@ -237,7 +237,7 @@ export class PeerManager {
 
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        socketManager.emit("answer", { to: socketId, answer });
+        roomSocketManager.emit("answer", { to: socketId, answer });
         console.log(`[PeerManager] Sent answer to ${socketId}`);
       } catch (err) {
         console.error(`[PeerManager] handleOffer failed for ${socketId}:`, err);

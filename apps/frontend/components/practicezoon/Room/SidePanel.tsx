@@ -7,7 +7,7 @@ import {
   Video,
   VideoOff,
 } from "lucide-react";
-import { socketManager } from "@/libs/socket/index";
+import { roomSocketManager } from "@/libs/socket/index";
 import { useAppSelector } from "@/libs/hooks";
 import Chat from "./Chat";
 import { ChatItem, IncomingMessage, Message, RoomActivity } from "@/types/chat";
@@ -181,7 +181,7 @@ export default function SidePanel({
 
   // Inbound chat messages
   useEffect(() => {
-    const unsub = socketManager.on("messageReceived", (payload: unknown) => {
+    const unsub = roomSocketManager.on("messageReceived", (payload: unknown) => {
       const data = payload as IncomingMessage;
       const isOwn = data.senderId === currentUser?.id;
       if (isOwn) return;
@@ -210,7 +210,7 @@ export default function SidePanel({
   }, [currentUser?.id]);
 
   useEffect(() => {
-    const unsub = socketManager.on("room-activity", (payload: unknown) => {
+    const unsub = roomSocketManager.on("room-activity", (payload: unknown) => {
       const activity = payload as RoomActivity;
       const item: ChatItem = {
         type: "activity",
@@ -226,7 +226,7 @@ export default function SidePanel({
   }, []);
 
   useEffect(() => {
-    const unsub = socketManager.on("room-activity", (payload: unknown) => {
+    const unsub = roomSocketManager.on("room-activity", (payload: unknown) => {
       const activity = payload as RoomActivity;
       if (
         activity.type !== "camera-started" &&

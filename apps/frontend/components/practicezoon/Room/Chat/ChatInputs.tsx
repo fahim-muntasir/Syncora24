@@ -2,7 +2,7 @@
 import React, { useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { Sticker, Film, Send, Book, Smile, Paperclip } from 'lucide-react';
-import { socketManager } from '@/libs/socket/index';
+import { roomSocketManager } from '@/libs/socket/index';
 import { useAppSelector } from '@/libs/hooks';
 
 type SentPayload = {
@@ -36,7 +36,7 @@ export default function ChatInputs({ onSend, replyTo }: ChatInputsProps) {
       emojiOnly: isEmojiOnly(trimmed),
     };
 
-    socketManager.emit('sendMessage', {
+    roomSocketManager.emit('sendMessage', {
       roomId,
       message: {
         ...payload,
@@ -70,7 +70,7 @@ export default function ChatInputs({ onSend, replyTo }: ChatInputsProps) {
     const localUrl = URL.createObjectURL(file);
     const payload: SentPayload = { imageUrl: localUrl };
 
-    socketManager.emit('sendMessage', {
+    roomSocketManager.emit('sendMessage', {
       roomId,
       message: {
         ...payload,

@@ -2,7 +2,7 @@
 
 import React from "react";
 import { ShieldCheck, Crown, Mic, MicOff, UserMinus, Flag, Sparkles } from "lucide-react";
-import { socketManager } from "@/libs/socket/index";
+import { roomSocketManager } from "@/libs/socket/index";
 import { useAppSelector } from "@/libs/hooks";
 import { RoomType } from "@/types/room";
 import Image from "next/image";
@@ -93,7 +93,7 @@ export default function ParticipantsList({
       forceMutedUsers.includes(memberId);
 
     if (isForceMuted) {
-      socketManager.emit(
+      roomSocketManager.emit(
         "moderator-unmute-user",
         {
           roomId: room.id,
@@ -101,7 +101,7 @@ export default function ParticipantsList({
         }
       );
     } else {
-      socketManager.emit(
+      roomSocketManager.emit(
         "moderator-mute-user",
         {
           roomId: room.id,
@@ -113,7 +113,7 @@ export default function ParticipantsList({
 
   const handleKick = (memberId: string) => {
     if (!room.id || !canModerateMember(memberId)) return;
-    socketManager.emit("kick-member", {
+    roomSocketManager.emit("kick-member", {
       roomId: room.id,
       targetUserId: memberId,
     });

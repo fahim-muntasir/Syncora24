@@ -1,6 +1,7 @@
 import { apiSlice } from "../api/apiSlice";
 import { isAuthResponse } from "@/utils/typeGuards";
 import { userLoggedIn } from "./authSlice";
+import type { AuthResponse } from "@/types/auth";
 
 export const authApiSlice = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
@@ -56,7 +57,19 @@ export const authApiSlice = apiSlice.injectEndpoints({
         method: "POST",
       }),
     }),
+
+    refreshToken: builder.mutation<AuthResponse, void>({
+      query: () => ({
+        url: "/auth/refresh",
+        method: "POST",
+      }),
+    }),
   }),
 });
 
-export const { useSignUpMutation, useSignInMutation, useLogoutMutation } = authApiSlice;
+export const {
+  useSignUpMutation,
+  useSignInMutation,
+  useLogoutMutation,
+  useRefreshTokenMutation,
+} = authApiSlice;

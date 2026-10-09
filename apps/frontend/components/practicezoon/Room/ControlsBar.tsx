@@ -10,7 +10,7 @@ import { useAudio } from "@/context/AudioContext";
 import { useAppSelector } from "@/libs/hooks";
 import { useParams } from "next/navigation";
 import toast from "react-hot-toast";
-import { socketManager } from "@/libs/socket/index";
+import { roomSocketManager } from "@/libs/socket/index";
 import EndRoomConfirmModal from "@/components/practicezoon/Room/Modals/EndRoomConfirmModal";
 
 export default function ControlsBar({
@@ -70,7 +70,7 @@ export default function ControlsBar({
   );
 
   const handleMuteAll = () => {
-    socketManager.emit(
+    roomSocketManager.emit(
       "moderator-set-mute-all",
       {
         roomId,
@@ -82,7 +82,7 @@ export default function ControlsBar({
   const handleConfirmEndRoom = () => {
     setIsEndingRoom(true);
 
-    socketManager.emit("end-room", {
+    roomSocketManager.emit("end-room", {
       roomId,
     });
 

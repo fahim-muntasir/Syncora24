@@ -5,7 +5,7 @@ import { useAppSelector } from "@/libs/hooks";
 import { useSpeakingEvents } from "@/hooks/useSpeakingEvents";
 import { Users, Copy } from "lucide-react";
 import toast from "react-hot-toast";
-import { socketManager } from "@/libs/socket";
+import { roomSocketManager } from "@/libs/socket";
 
 // Track recently joined members (joined within last 60s)
 function useRecentlyJoined(members: RoomType["members"]) {
@@ -206,7 +206,7 @@ export default function RoomGrid({
               cameraEnabled={canUseCamera(room.members[0].id)}
               cameraDisabled={cameraDisabledMemberIds.includes(room.members[0].id)}
               onToggleMemberCamera={(enabled) =>
-                socketManager.emit("moderator-set-member-camera", {
+                roomSocketManager.emit("moderator-set-member-camera", {
                   roomId: room.id,
                   targetUserId: room.members[0].id,
                   cameraEnabled: enabled,
@@ -241,7 +241,7 @@ export default function RoomGrid({
                   cameraEnabled={canUseCamera(member.id)}
                   cameraDisabled={cameraDisabledMemberIds.includes(member.id)}
                   onToggleMemberCamera={(enabled) =>
-                    socketManager.emit("moderator-set-member-camera", {
+                    roomSocketManager.emit("moderator-set-member-camera", {
                       roomId: room.id,
                       targetUserId: member.id,
                       cameraEnabled: enabled,
@@ -278,7 +278,7 @@ export default function RoomGrid({
               cameraEnabled={canUseCamera(member.id)}
               cameraDisabled={cameraDisabledMemberIds.includes(member.id)}
               onToggleMemberCamera={(enabled) =>
-                socketManager.emit("moderator-set-member-camera", {
+                roomSocketManager.emit("moderator-set-member-camera", {
                   roomId: room.id,
                   targetUserId: member.id,
                   cameraEnabled: enabled,

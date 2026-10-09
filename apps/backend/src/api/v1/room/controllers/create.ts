@@ -3,7 +3,7 @@ import {RoomInputType, roomSchema} from "../../../../schemas/roomSchema";
 import { createRoom } from "../../../../lib/room";
 import { successResponse } from "../../../../utils/responseHelper";
 import { v4 as uuidv4 } from 'uuid';
-import { getIo } from "../../../../socket/socket";
+import { getPublicIo } from "../../../../socket/socket";
 
 export const createRoomController = async (
   req: Request,
@@ -28,7 +28,7 @@ export const createRoomController = async (
     });
 
     // Emit socket event to all connected clients
-    getIo().emit('roomCreated', newRoom);
+    getPublicIo().emit("public-room-created", newRoom);
 
     // create all links for response
     const links = {
