@@ -6,7 +6,7 @@ import { RoomType } from "@/types/room";
 import RoomLayout from "@/components/practicezoon/Room/RoomLayout";
 import { BackgroundPattern } from "@/components/background/BackgroundPattern";
 import RoomDetailsModal from "@/components/practicezoon/Room/RoomDetailsModal";
-import { socketManager } from "@/libs/socket/index";
+import { roomSocketManager } from "@/libs/socket/index";
 import { useAppDispatch, useAppSelector } from "@/libs/hooks";
 import {
   addModeratorId,
@@ -75,7 +75,6 @@ export default function VideoConference() {
   } = useRoomSocket({
     roomId,
     currentUserId: currentUser?.id,
-    currentUserName: currentUser?.fullName,
     isPrivileged: Boolean(
       currentUser &&
         (currentUser.id === room?.hostId || moderatorIds.includes(currentUser.id)),
@@ -90,7 +89,7 @@ export default function VideoConference() {
   }, [data, isSuccess]);
 
   useEffect(() => {
-    const unsubscribe = socketManager.on(
+    const unsubscribe = roomSocketManager.on(
       "room-moderator-updated",
       (payload: unknown) => {
         const event = payload as {
@@ -101,17 +100,11 @@ export default function VideoConference() {
 
         if (event.roomId !== roomId) return;
 
-        setRoom((previousRoom) => {
-          if (!previousRoom) return previousRoom;
-
-          if (event.isModerator) {
-            dispatch(addModeratorId(event.memberId));
-          } else {
-            dispatch(removeModeratorId(event.memberId));
-          }
-
-          return previousRoom;
-        });
+        if (event.isModerator) {
+          dispatch(addModeratorId(event.memberId));
+        } else {
+          dispatch(removeModeratorId(event.memberId));
+        }
       },
     );
 
@@ -119,7 +112,7 @@ export default function VideoConference() {
   }, [roomId, dispatch]);
 
   useEffect(() => {
-    const unsubscribe = socketManager.on(
+    const unsubscribe = roomSocketManager.on(
       "room-moderator-state",
       (payload: unknown) => {
         const event = payload as {
@@ -141,7 +134,7 @@ export default function VideoConference() {
   // Emit leave on tab/window close
   useEffect(() => {
     const handleBeforeUnload = () => {
-      socketManager.emit("leave-room", { roomId, memberId: currentUser?.id });
+      roomSocketManager.emit("leave-room", { roomId });
     };
     const inRoom = room?.members.some((m) => m.id === currentUser?.id);
     if (inRoom) window.addEventListener("beforeunload", handleBeforeUnload);
@@ -149,7 +142,7 @@ export default function VideoConference() {
   }, [room, currentUser, roomId]);
 
   useEffect(() => {
-    const unsubscribe = socketManager.on(
+    const unsubscribe = roomSocketManager.on(
       "room-ended-for-members",
       (payload: unknown) => {
         const { roomId: endedRoomId } = payload as {

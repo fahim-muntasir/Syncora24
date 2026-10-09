@@ -20,28 +20,37 @@ type SocketResponse = {
 };
 
 export class SocketManager {
-  private static instance: SocketManager | null = null;
   private socket: Socket | null = null;
   private connectionState: ConnectionState = "disconnected";
   private stateListeners: Set<(state: ConnectionState) => void> = new Set();
+  private token: string | null = null;
   // Queue listeners registered before connect() is called
   private pendingListeners: PendingListener[] = [];
 
-  private constructor() {}
+  constructor(
+    private readonly namespace: "/public" | "/room",
+    private readonly authenticated = false,
+  ) {}
 
-  static getInstance(): SocketManager {
-    if (!SocketManager.instance) {
-      SocketManager.instance = new SocketManager();
+  connect(token?: string): Socket {
+    if (this.authenticated) {
+      this.token = token ?? this.token;
+      if (!this.token) {
+        throw new Error(`A JWT is required to connect to ${this.namespace}`);
+      }
     }
-    return SocketManager.instance;
-  }
-
-  connect(): Socket {
     if (this.socket?.connected) return this.socket;
-    // If socket exists but is disconnected, reuse it
-    if (this.socket) return this.socket;
+    if (this.socket) {
+      if (!this.socket.connected && !this.socket.active) {
+        this.socket.connect();
+      }
+      return this.socket;
+    }
 
-    const url = process.env.NEXT_PUBLIC_API_URL;
+    const baseUrl = (
+      process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001"
+    ).replace(/\/+$/, "");
+    const url = `${baseUrl}${this.namespace}`;
 
     this.socket = io(url, {
       reconnection: true,
@@ -50,6 +59,9 @@ export class SocketManager {
       reconnectionDelayMax: 5000,
       transports: ["websocket"],
       autoConnect: true,
+      ...(this.authenticated
+        ? { auth: (callback) => callback({ token: this.token }) }
+        : {}),
     });
 
     // Attach lifecycle listeners
@@ -63,7 +75,7 @@ export class SocketManager {
     });
     this.socket.on("reconnect_attempt", () => this.setState("reconnecting"));
     this.socket.on("connect_error", (err) => {
-      console.error("[SocketManager] Connection error:", err.message);
+      console.warn("[SocketManager] Connection error:", err.message);
       this.setState("reconnecting");
     });
     this.socket.on("reconnect", () => {
@@ -71,11 +83,10 @@ export class SocketManager {
       this.setState("connected");
     });
 
-    // Flush pending listeners that were registered before connect()
+    // Retain listeners so a later authenticated reconnect restores subscriptions.
     for (const { event, handler } of this.pendingListeners) {
       this.socket.on(event, handler);
     }
-    this.pendingListeners = [];
 
     return this.socket;
   }
@@ -130,20 +141,22 @@ export class SocketManager {
   }
 
   on(event: string, handler: EventHandler): () => void {
-    if (!this.socket) {
-      // Queue until connect() is called
-      this.pendingListeners.push({ event, handler });
-      return () => {
-        this.pendingListeners = this.pendingListeners.filter(
-          (p) => !(p.event === event && p.handler === handler),
-        );
-      };
-    }
-    this.socket.on(event, handler);
-    return () => this.socket?.off(event, handler);
+    this.pendingListeners.push({ event, handler });
+    this.socket?.on(event, handler);
+    return () => {
+      this.pendingListeners = this.pendingListeners.filter(
+        (listener) =>
+          !(listener.event === event && listener.handler === handler),
+      );
+      this.socket?.off(event, handler);
+    };
   }
 
   off(event: string, handler: EventHandler): void {
+    this.pendingListeners = this.pendingListeners.filter(
+      (listener) =>
+        !(listener.event === event && listener.handler === handler),
+    );
     this.socket?.off(event, handler);
   }
 
@@ -164,8 +177,10 @@ export class SocketManager {
   disconnect(): void {
     this.socket?.disconnect();
     this.socket = null;
+    this.token = null;
     this.setState("disconnected");
   }
 }
 
-export const socketManager = SocketManager.getInstance();
+export const publicSocketManager = new SocketManager("/public");
+export const roomSocketManager = new SocketManager("/room", true);

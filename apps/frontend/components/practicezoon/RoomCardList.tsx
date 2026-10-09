@@ -3,7 +3,7 @@ import React, { useMemo, useState, useEffect } from "react";
 import { RoomCard } from "./RoomCard";
 import { RoomType } from "@/types/room";
 import { useGetRoomsQuery } from "@/libs/features/room/roomApiSlice";
-import { socketManager } from "@/libs/socket/index";
+import { publicSocketManager } from "@/libs/socket/index";
 import { isRoomsResponse } from "@/utils/typeGuardsForRoom";
 import EmptyRoomCard from "../common/EmptyRoomCard";
 import { useAppSelector } from "@/libs/hooks";
@@ -79,8 +79,8 @@ export default function RoomCardList() {
   }, [initialRooms]);
 
   useEffect(() => {
-    const unsubscribe = socketManager.on(
-      "room-ended",
+    const unsubscribe = publicSocketManager.on(
+      "public-room-ended",
       (payload: unknown) => {
         const { roomId } = payload as {
           roomId: string;
@@ -100,7 +100,7 @@ export default function RoomCardList() {
   }, []);
 
   useEffect(() => {
-    const unsubCreated = socketManager.on("roomCreated", (payload) => {
+    const unsubCreated = publicSocketManager.on("public-room-created", (payload) => {
       const room = payload as RoomType;
       setRooms((prev) => {
         if (prev.some((r) => r.id === room.id)) return prev;
@@ -108,7 +108,7 @@ export default function RoomCardList() {
       });
     });
 
-    const unsubJoined = socketManager.on("joinedMember", (payload: unknown) => {
+    const unsubJoined = publicSocketManager.on("public-room-member-joined", (payload: unknown) => {
       const data = payload as { roomId: string; newMember: RoomType["members"][number] };
       setRooms((prev) =>
         prev.map((room) => {
@@ -120,7 +120,7 @@ export default function RoomCardList() {
       );
     });
 
-    const unsubLeft = socketManager.on("removedMember", (payload: unknown) => {
+    const unsubLeft = publicSocketManager.on("public-room-member-removed", (payload: unknown) => {
       const data = payload as { roomId: string; memberId: string };
       setRooms((prev) =>
         prev.map((room) => {

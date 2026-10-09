@@ -1,4 +1,4 @@
-import { Server } from "socket.io";
+import { Namespace, Server } from "socket.io";
 import { Server as HttpServer } from "http";
 import { canModerateRoom } from "../utils/canModarateRoom";
 import {
@@ -17,9 +17,12 @@ import {
 } from "../lib/moderation";
 
 import { handleJoinRoom } from "./handlers/room/joinRoom";
+import { authenticateRoomSocket } from "./authenticateRoomSocket";
 import redis from "../redis";
 
 let io: Server | null = null;
+let publicIo: Namespace | null = null;
+let roomIo: Namespace | null = null;
 const DISCONNECT_GRACE_PERIOD_MS = 60_000;
 const pendingDisconnects = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -36,7 +39,7 @@ const clearPendingDisconnect = (roomId: string, userId: string) => {
 };
 
 const emitRoomActivity = (roomId: string, activity: Record<string, unknown>) => {
-  io?.to(roomId).emit("room-activity", { ...activity, timestamp: Date.now() });
+  roomIo?.to(roomId).emit("room-activity", { ...activity, timestamp: Date.now() });
 };
 
 const getMemberName = (
@@ -51,26 +54,36 @@ export const initializeSocket = (server: HttpServer) => {
     },
   });
 
-  io.on("connection", (socket) => {
+  publicIo = io.of("/public");
+  roomIo = io.of("/room");
+  authenticateRoomSocket(roomIo);
+
+  roomIo.on("connection", (socket) => {
     console.log("A user connected:", socket.id);
 
     socket.on(
       "join-room",
       async (
-        payload,
+        { roomId }: { roomId: string },
         callback?: (response: {
           success: boolean;
           message?: string;
           code?: string;
         }) => void,
       ) => {
-        const response = await handleJoinRoom(io!, socket, payload);
+        const response = await handleJoinRoom(
+          roomIo!,
+          publicIo!,
+          socket,
+          { roomId },
+        );
 
         if (response.success) {
-          clearPendingDisconnect(payload.roomId, payload.user.id);
-          io?.to(payload.roomId).emit("participant-connection-state", {
-            roomId: payload.roomId,
-            userId: payload.user.id,
+          const userId = socket.data.user.id;
+          clearPendingDisconnect(roomId, userId);
+          roomIo?.to(roomId).emit("participant-connection-state", {
+            roomId,
+            userId,
             state: "connected",
           });
         }
@@ -81,32 +94,35 @@ export const initializeSocket = (server: HttpServer) => {
 
     socket.on("offer", ({ to, offer }) => {
       console.log("Forwarding offer to:", to);
-      io?.to(to).emit("offer", { from: socket.id, offer });
+      roomIo?.to(to).emit("offer", { from: socket.id, offer });
     });
 
     socket.on("answer", ({ to, answer }) => {
-      io?.to(to).emit("answer", { from: socket.id, answer });
+      roomIo?.to(to).emit("answer", { from: socket.id, answer });
     });
 
     socket.on("ice-candidate", ({ to, candidate }) => {
-      io?.to(to).emit("ice-candidate", { from: socket.id, candidate });
+      roomIo?.to(to).emit("ice-candidate", { from: socket.id, candidate });
     });
 
     // Handle user speaking status
-    socket.on("user-speaking", ({ roomId, userId, speaking }) => {
+    socket.on("user-speaking", ({ roomId, speaking }) => {
+      if (socket.data.roomId !== roomId) return;
+      const userId = socket.data.user.id;
       console.log(`🎙 ${userId} ${speaking ? "started" : "stopped"} speaking`);
 
       // Broadcast to others in the same room
       socket.to(roomId).emit("user-speaking", { roomId, userId, speaking });
     });
 
-    socket.on("screen-share-state", ({ roomId, userId, sharing, streamId }) => {
-      if (!roomId || !userId) return;
+    socket.on("screen-share-state", ({ roomId, sharing, streamId }) => {
+      if (!roomId || socket.data.roomId !== roomId) return;
+      const userId = socket.data.user.id;
 
       socket.data.isScreenSharing = Boolean(sharing);
       socket.data.screenShareStreamId = sharing ? streamId : undefined;
 
-      io?.to(roomId).emit("screen-share-state", {
+      roomIo?.to(roomId).emit("screen-share-state", {
         roomId,
         userId,
         userName: socket.data.userName ?? userId,
@@ -116,7 +132,9 @@ export const initializeSocket = (server: HttpServer) => {
     });
 
     // mute user
-    socket.on("user-mute-status", ({ roomId, userId, isUnMuted }) => {
+    socket.on("user-mute-status", ({ roomId, isUnMuted }) => {
+      if (socket.data.roomId !== roomId) return;
+      const userId = socket.data.user.id;
       console.log(
         `🎙 ${userId} ${isUnMuted ? "unmuted" : "muted"} microphone room: ${roomId}`,
       );
@@ -125,13 +143,9 @@ export const initializeSocket = (server: HttpServer) => {
       socket.to(roomId).emit("user-mute-status", { roomId, userId, isUnMuted });
     });
 
-    socket.on("leave-room", async ({ roomId, memberId }) => {
-      if (
-        socket.data.roomId !== roomId ||
-        socket.data.userId !== memberId
-      ) {
-        return;
-      }
+    socket.on("leave-room", async ({ roomId }) => {
+      const memberId = socket.data.user.id;
+      if (socket.data.roomId !== roomId) return;
 
       clearPendingDisconnect(roomId, memberId);
       const room = await findSingleItem(roomId);
@@ -142,7 +156,11 @@ export const initializeSocket = (server: HttpServer) => {
       try {
         await removeMember({ roomId, memberId });
 
-        io?.emit("removedMember", {
+        publicIo?.emit("public-room-member-removed", {
+          roomId,
+          memberId,
+        });
+        roomIo?.to(roomId).emit("room-member-removed", {
           roomId,
           memberId,
         });
@@ -151,19 +169,19 @@ export const initializeSocket = (server: HttpServer) => {
       }
 
       if (socket.data.isScreenSharing) {
-        io?.to(roomId).emit("screen-share-state", {
+        roomIo?.to(roomId).emit("screen-share-state", {
           roomId,
           userId: memberId,
           sharing: false,
         });
       }
 
-      io?.to(roomId).emit("participant-connection-state", {
+      roomIo?.to(roomId).emit("participant-connection-state", {
         roomId,
         userId: memberId,
         state: "disconnected",
       });
-      io?.to(roomId).emit("user-left", {
+      roomIo?.to(roomId).emit("user-left", {
         roomId,
         memberId,
         socketId: socket.id,
@@ -190,7 +208,7 @@ export const initializeSocket = (server: HttpServer) => {
           actorName: socket.data.userName ?? actorId,
         });
 
-        const targetSockets = (await io!.in(roomId).fetchSockets()).filter(
+        const targetSockets = (await roomIo!.in(roomId).fetchSockets()).filter(
           (targetSocket) => targetSocket.data.userId === targetUserId,
         );
 
@@ -208,8 +226,15 @@ export const initializeSocket = (server: HttpServer) => {
           });
         }
 
-        io?.emit("removedMember", { roomId, memberId: targetUserId });
-        io?.to(roomId).emit("user-left", {
+        publicIo?.emit("public-room-member-removed", {
+          roomId,
+          memberId: targetUserId,
+        });
+        roomIo?.to(roomId).emit("room-member-removed", {
+          roomId,
+          memberId: targetUserId,
+        });
+        roomIo?.to(roomId).emit("user-left", {
           roomId,
           memberId: targetUserId,
           socketId: targetSockets[0]?.id,
@@ -235,7 +260,7 @@ export const initializeSocket = (server: HttpServer) => {
             isModerator: Boolean(isModerator),
           });
 
-          io?.to(roomId).emit("room-moderator-updated", {
+          roomIo?.to(roomId).emit("room-moderator-updated", {
             roomId,
             memberId: targetUserId,
             isModerator: result.isModerator,
@@ -264,7 +289,7 @@ export const initializeSocket = (server: HttpServer) => {
     socket.on("sendMessage", ({ roomId, message }) => {
       const senderId = socket.data.userId;
 
-      io?.to(roomId).emit("messageReceived", {
+      roomIo?.to(roomId).emit("messageReceived", {
         roomId,
         message,
         senderId,
@@ -300,10 +325,10 @@ export const initializeSocket = (server: HttpServer) => {
         const result = await muteUser(roomId, targetUserId);
 
         // Notify the target immediately
-        io?.to(`user:${targetUserId}`).emit("member-force-muted", result);
+        roomIo?.to(`user:${targetUserId}`).emit("member-force-muted", result);
 
         // Update everyone else's UI
-        io?.to(roomId).emit("member-force-mute-status", result);
+        roomIo?.to(roomId).emit("member-force-mute-status", result);
         emitRoomActivity(roomId, {
           type: "member-muted",
           userId: targetUserId,
@@ -327,9 +352,9 @@ export const initializeSocket = (server: HttpServer) => {
 
       const result = await unmuteUser(roomId, targetUserId);
 
-      io?.to(`user:${targetUserId}`).emit("member-force-unmuted", result);
+      roomIo?.to(`user:${targetUserId}`).emit("member-force-unmuted", result);
 
-      io?.to(roomId).emit("member-force-mute-status", result);
+      roomIo?.to(roomId).emit("member-force-mute-status", result);
       const room = await findSingleItem(roomId);
       if (room) {
         emitRoomActivity(roomId, {
@@ -365,7 +390,7 @@ export const initializeSocket = (server: HttpServer) => {
         const muteAllExcludedUsers = muteAll ? [room.hostId] : [];
 
         // Tell everyone currently in the room
-        io?.to(roomId).emit("room-mute-all-state", {
+        roomIo?.to(roomId).emit("room-mute-all-state", {
           roomId,
           muteAll,
           muteAllExcludedUsers,
@@ -391,12 +416,12 @@ export const initializeSocket = (server: HttpServer) => {
         }
 
         const enabled = await setCameraEnabled(roomId, Boolean(cameraEnabled));
-        io?.to(roomId).emit("room-camera-state", {
+        roomIo?.to(roomId).emit("room-camera-state", {
           roomId,
           cameraEnabled: enabled,
         });
         if (!enabled) {
-          const roomSockets = await io!.in(roomId).fetchSockets();
+          const roomSockets = await roomIo!.in(roomId).fetchSockets();
           for (const roomSocket of roomSockets) {
             const isPrivileged = await canModerateRoom(
               roomId,
@@ -460,7 +485,7 @@ export const initializeSocket = (server: HttpServer) => {
             targetUserId,
             Boolean(cameraEnabled),
           );
-          io?.to(roomId).emit("room-member-camera-state", {
+          roomIo?.to(roomId).emit("room-member-camera-state", {
             roomId,
             memberId: targetUserId,
             cameraEnabled: enabled,
@@ -489,7 +514,7 @@ export const initializeSocket = (server: HttpServer) => {
       const room = await findSingleItem(roomId);
       if (!room) return;
 
-      const userId = socket.data.userId;
+      const userId = socket.data.user.id;
       const privileged =
         room.hostId === userId || (await canModerateRoom(roomId, userId));
       const memberCameraDisabled = await redis.sismember(
@@ -510,7 +535,7 @@ export const initializeSocket = (server: HttpServer) => {
         return;
       }
 
-      io?.to(roomId).emit("camera-state", {
+      roomIo?.to(roomId).emit("camera-state", {
         roomId,
         userId,
         cameraEnabled: Boolean(cameraEnabled),
@@ -546,7 +571,7 @@ export const initializeSocket = (server: HttpServer) => {
 
         await endRoom(roomId);
 
-        io?.to(roomId).emit("room-ended-for-members", {
+        roomIo?.to(roomId).emit("room-ended-for-members", {
           roomId,
           endedBy: userId,
         });
@@ -556,7 +581,7 @@ export const initializeSocket = (server: HttpServer) => {
           actorName: socket.data.userName ?? userId,
         });
 
-        io?.emit("room-ended", {
+        publicIo?.emit("public-room-ended", {
           roomId,
           endedBy: userId,
         });
@@ -575,7 +600,7 @@ export const initializeSocket = (server: HttpServer) => {
       console.log("User disconnected from room:", roomId, memberId);
 
       try {
-        const liveSockets = await io!.in(roomId).fetchSockets();
+        const liveSockets = await roomIo!.in(roomId).fetchSockets();
         if (
           liveSockets.some(
             (liveSocket) => liveSocket.data.userId === memberId,
@@ -590,7 +615,7 @@ export const initializeSocket = (server: HttpServer) => {
         );
       }
 
-      io?.to(roomId).emit("participant-connection-state", {
+      roomIo?.to(roomId).emit("participant-connection-state", {
         roomId,
         userId: memberId,
         state: "reconnecting",
@@ -607,13 +632,13 @@ export const initializeSocket = (server: HttpServer) => {
         pendingDisconnects.delete(key);
 
         try {
-          const currentSockets = await io!.in(roomId).fetchSockets();
+          const currentSockets = await roomIo!.in(roomId).fetchSockets();
           if (
             currentSockets.some(
               (currentSocket) => currentSocket.data.userId === memberId,
             )
           ) {
-            io?.to(roomId).emit("participant-connection-state", {
+            roomIo?.to(roomId).emit("participant-connection-state", {
               roomId,
               userId: memberId,
               state: "connected",
@@ -622,22 +647,23 @@ export const initializeSocket = (server: HttpServer) => {
           }
 
           await removeMember({ roomId, memberId });
-          io?.emit("removedMember", { roomId, memberId });
+          publicIo?.emit("public-room-member-removed", { roomId, memberId });
+          roomIo?.to(roomId).emit("room-member-removed", { roomId, memberId });
 
           if (wasScreenSharing) {
-            io?.to(roomId).emit("screen-share-state", {
+            roomIo?.to(roomId).emit("screen-share-state", {
               roomId,
               userId: memberId,
               sharing: false,
             });
           }
 
-          io?.to(roomId).emit("participant-connection-state", {
+          roomIo?.to(roomId).emit("participant-connection-state", {
             roomId,
             userId: memberId,
             state: "disconnected",
           });
-          io?.to(roomId).emit("user-left", { roomId, memberId, socketId });
+          roomIo?.to(roomId).emit("user-left", { roomId, memberId, socketId });
           emitRoomActivity(roomId, {
             type: "member-left",
             userId: memberId,
@@ -656,9 +682,9 @@ export const initializeSocket = (server: HttpServer) => {
   });
 };
 
-export const getIo = (): Server => {
-  if (!io) {
+export const getPublicIo = (): Namespace => {
+  if (!publicIo) {
     throw new Error("Socket.IO is not initialized!");
   }
-  return io;
+  return publicIo;
 };

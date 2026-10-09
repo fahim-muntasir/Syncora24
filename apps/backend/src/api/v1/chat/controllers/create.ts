@@ -3,7 +3,6 @@ import { RoomInputType, roomSchema } from "../../../../schemas/roomSchema";
 import { createRoom } from "../../../../lib/room";
 import { successResponse } from "../../../../utils/responseHelper";
 import { v4 as uuidv4 } from "uuid";
-import { getIo } from "../../../../socket/socket";
 
 export const createChatController = async (
   req: Request,
@@ -27,9 +26,6 @@ export const createChatController = async (
     //   status: 'active',
     //   maxParticipants: data.maxParticipants,
     // });
-
-    // // Emit socket event to all connected clients
-    // getIo().to(roomId).emit("send-msg", { msg });
 
     // create all links for response
     // const links = {

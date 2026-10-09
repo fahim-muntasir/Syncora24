@@ -1,13 +1,9 @@
-import { Server, Socket } from "socket.io";
+import { Namespace, Socket } from "socket.io";
 import { addMember } from "../../../lib/room";
 import { getRoomModerationState } from "../../../lib/moderation";
 
 type JoinRoomPayload = {
   roomId: string;
-  user: {
-    id: string;
-    name: string;
-  };
 };
 
 type JoinRoomResponse = {
@@ -17,11 +13,16 @@ type JoinRoomResponse = {
 };
 
 export const handleJoinRoom = async (
-  io: Server,
+  io: Namespace,
+  publicIo: Namespace,
   socket: Socket,
-  { roomId, user }: JoinRoomPayload,
+  { roomId }: JoinRoomPayload,
 ): Promise<JoinRoomResponse> => {
   try {
+    const user = {
+      id: socket.data.user.id,
+      name: socket.data.user.fullName,
+    };
     console.log(`[Socket] ${user.id} joining realtime room ${roomId}`);
 
     // Prevent duplicate Socket.IO joining.
@@ -121,7 +122,14 @@ export const handleJoinRoom = async (
     }
 
     if (memberResult.added) {
-      io.emit("joinedMember", {
+      publicIo.emit("public-room-member-joined", {
+        roomId,
+        newMember: {
+          id: user.id,
+          name: user.name,
+        },
+      });
+      io.to(roomId).emit("room-member-joined", {
         roomId,
         newMember: {
           id: user.id,

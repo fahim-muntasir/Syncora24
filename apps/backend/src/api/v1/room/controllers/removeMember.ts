@@ -1,7 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { successResponse } from "../../../../utils/responseHelper";
 import { removeMember } from "../../../../lib/room";
-import { getIo } from "../../../../socket/socket";
 import createHttpError from "http-errors";
 
 export const removeMembersController = async (
@@ -18,11 +17,6 @@ export const removeMembersController = async (
     }
 
     const result = await removeMember({ roomId, memberId: req.user.id });
-
-    // getIo().emit("removedMember", {
-    //   roomId,
-    //   memberId: req.user.id,
-    // });
 
     // send final response
     successResponse(res, result, "Member removed successfully!", 200);

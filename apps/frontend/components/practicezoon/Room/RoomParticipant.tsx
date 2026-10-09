@@ -21,7 +21,7 @@ import { generateIdenticonAvatar } from "@/utils/generateAvatar";
 import { useAudio } from "@/context/AudioContext";
 import { useAppDispatch, useAppSelector } from "@/libs/hooks";
 import { removeUnMutedUser } from "@/libs/features/room/roomSlice";
-import { socketManager } from "@/libs/socket";
+import { roomSocketManager } from "@/libs/socket";
 import VolumeIndicator from "./VolumeIndicator";
 
 interface RoomParticipantProps {
@@ -150,12 +150,12 @@ export default function RoomParticipant({
 
   const kickHandler = () => {
     if (!canKick) return;
-    socketManager.emit("kick-member", { roomId, targetUserId: member.id });
+    roomSocketManager.emit("kick-member", { roomId, targetUserId: member.id });
   };
 
   const moderatorRoleHandler = () => {
     if (!currentUserIsHost || isHost) return;
-    socketManager.emit("set-moderator-role", {
+    roomSocketManager.emit("set-moderator-role", {
       roomId,
       targetUserId: member.id,
       isModerator: !isModerator,

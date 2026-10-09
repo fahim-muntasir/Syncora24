@@ -3,7 +3,7 @@ dotenv.config();
 import http from "http";
 import app from "./src/app/app";
 import { dbConnection } from "./src/db/dbConnection";
-import { initializeSocket, getIo } from "./src/socket/socket";
+import { initializeSocket } from "./src/socket/socket";
 
 const server = http.createServer(app);
 
