@@ -59,6 +59,15 @@ export type RoomActivity =
       type: "member-joined";
       userId: string;
       userName: string;
+      side?: "for" | "against";
+      timestamp: number;
+    }
+  | {
+      type: "member-side-changed";
+      userId: string;
+      userName: string;
+      previousSide: "for" | "against";
+      side: "for" | "against";
       timestamp: number;
     }
   | { type: "member-left"; userId: string; userName: string; timestamp: number }

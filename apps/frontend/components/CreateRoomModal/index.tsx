@@ -28,6 +28,7 @@ export default function CreateRoomModal({ isOpen }: CreateRoomModalProps) {
     language: "English",
     level: "Beginner",
     maxParticipants: 2,
+    type: "open",
   };
 
   const doSubmit = async (
@@ -41,6 +42,7 @@ export default function CreateRoomModal({ isOpen }: CreateRoomModalProps) {
         language: values.language,
         level: values.level,
         maxParticipants: values.maxParticipants,
+        type: values.type,
       };
 
       await createRoom(requestBody).unwrap();
@@ -90,6 +92,22 @@ export default function CreateRoomModal({ isOpen }: CreateRoomModalProps) {
                 />
                 <ErrorMessage
                   name="description"
+                  component="div"
+                  className="text-sm text-danger-light"
+                />
+              </FieldContainer>
+
+              <FieldContainer label="Room Type" name="type">
+                <Field
+                  name="type"
+                  as="select"
+                  className="w-full px-3 py-2 bg-[#343434] border border-gray-700 rounded-md text-white focus:outline-none focus:border-green-500"
+                >
+                  <option value="open">Open Conversation</option>
+                  <option value="debate">Debate Room</option>
+                </Field>
+                <ErrorMessage
+                  name="type"
                   component="div"
                   className="text-sm text-danger-light"
                 />

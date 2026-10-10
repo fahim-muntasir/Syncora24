@@ -1,10 +1,12 @@
 import redis from "../../redis";
 import createHttpError from "http-errors";
+import type { DebateSide } from "../../schemas/roomSchema";
 
 type RoomMember = {
   id: string;
   name: string;
   avatar?: string;
+  side?: DebateSide;
 };
 
 type AddMemberParams = {
@@ -15,6 +17,7 @@ type AddMemberParams = {
 type AddMemberResult = {
   added: boolean;
   alreadyMember: boolean;
+  sideAssigned: boolean;
 };
 
 export const addMember = async ({
@@ -43,6 +46,19 @@ export const addMember = async ({
       local members = room.members or {}
       local userId = ARGV[1]
       local maxParticipants = room.maxParticipants
+      local memberJson = cjson.decode(ARGV[2])
+      local roomType = room.type or "open"
+
+      if memberJson.side ~= nil and memberJson.side ~= "for" and memberJson.side ~= "against" then
+        return {0, "INVALID_DEBATE_SIDE"}
+      end
+
+      if roomType == "debate" and memberJson.side == nil then
+        return {0, "INVALID_DEBATE_SIDE"}
+      end
+      if roomType ~= "debate" then
+        memberJson.side = nil
+      end
 
       -- Validate capacity configuration
       if not maxParticipants then
@@ -54,8 +70,18 @@ export const addMember = async ({
       end
 
       -- Check whether the user is already a member
-      for _, existingMember in ipairs(members) do
+      for index, existingMember in ipairs(members) do
         if existingMember.id == userId then
+          if roomType == "debate" and existingMember.side == nil then
+            existingMember.side = memberJson.side
+            redis.call(
+              "JSON.SET",
+              KEYS[1],
+              "$.members[" .. (index - 1) .. "]",
+              cjson.encode(existingMember)
+            )
+            return {1, "MEMBER_SIDE_ASSIGNED"}
+          end
           return {1, "ALREADY_MEMBER"}
         end
       end
@@ -70,7 +96,7 @@ export const addMember = async ({
         "JSON.ARRAPPEND",
         KEYS[1],
         "$.members",
-        ARGV[2]
+        cjson.encode(memberJson)
       )
 
       -- Keep your existing behavior
@@ -97,6 +123,9 @@ export const addMember = async ({
         case "ROOM_FULL":
           throw createHttpError(403, "This room is full.");
 
+        case "INVALID_DEBATE_SIDE":
+          throw createHttpError(400, "Choose For or Against before joining this debate room.");
+
         case "MEMBER_KICKED":
           throw createHttpError(
             403,
@@ -120,6 +149,7 @@ export const addMember = async ({
     return {
       added: code === "MEMBER_ADDED",
       alreadyMember: code === "ALREADY_MEMBER",
+      sideAssigned: code === "MEMBER_SIDE_ASSIGNED",
     };
   } catch (error) {
     console.error("[Room] Failed to add member:", error);

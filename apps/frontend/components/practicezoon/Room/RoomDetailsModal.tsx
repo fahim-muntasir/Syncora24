@@ -30,7 +30,7 @@ const levelConfig: Record<string, { bg: string; text: string; border: string; do
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  joinRoom: () => Promise<void>;
+  joinRoom: (side?: "for" | "against") => Promise<void>;
   onKicked: () => void;
 }
 
@@ -41,6 +41,7 @@ export default function RoomDetailsModal({
   onKicked,
 }: Props) {
   const [isJoining, setIsJoining] = useState(false);
+  const [selectedSide, setSelectedSide] = useState<"for" | "against" | "">("");
   const currentUser = useAppSelector((state) => state.auth.user);
   const router = useRouter();
   const { id } = useParams();
@@ -53,10 +54,20 @@ export default function RoomDetailsModal({
   } = useGetSingleRoomQuery(roomId || "", { skip: !roomId });
 
   const roomData = roomResponse?.data;
+  const isDebateRoom = roomData?.type === "debate";
+  const currentMember = roomData?.members.find(
+    (member) => member.id === currentUser?.id,
+  );
   const level = levelConfig[roomData?.level as keyof typeof levelConfig] ?? levelConfig.Beginner;
   const spotsLeft = (roomData?.maxParticipants ?? 0) - (roomData?.members?.length ?? 0);
   const dispatch = useAppDispatch();
   const moderatorIds = useAppSelector((state) => state.room.moderatorIds);
+
+  useEffect(() => {
+    if (isDebateRoom && currentMember?.side) {
+      setSelectedSide((previous) => previous || currentMember.side || "");
+    }
+  }, [currentMember?.side, isDebateRoom]);
 
   useEffect(() => {
     const unsubJoined = publicSocketManager.on(
@@ -96,6 +107,33 @@ export default function RoomDetailsModal({
       unsubJoined?.();
     };
   }, [dispatch, refetch, roomId]);
+
+  useEffect(() => {
+    const unsubscribe = publicSocketManager.on(
+      "public-room-member-side-updated",
+      (payload: unknown) => {
+        const event = payload as {
+          roomId: string;
+          memberId: string;
+          side: "for" | "against";
+        };
+        if (event.roomId !== roomId) return;
+        dispatch(
+          roomApiSlice.util.updateQueryData(
+            "getSingleRoom",
+            roomId,
+            (draft) => {
+              const member = draft.data.members.find(
+                (item) => item.id === event.memberId,
+              );
+              if (member) member.side = event.side;
+            },
+          ),
+        );
+      },
+    );
+    return unsubscribe;
+  }, [dispatch, roomId]);
 
   useEffect(() => {
     const unsubRemoved = publicSocketManager.on(
@@ -146,7 +184,7 @@ export default function RoomDetailsModal({
     const toastId = toast.loading("Joining room…");
 
     try {
-      await joinRoom();
+      await joinRoom(isDebateRoom ? selectedSide || undefined : undefined);
 
       toast.success(
         "You joined the room!",
@@ -210,7 +248,6 @@ export default function RoomDetailsModal({
             You can leave at any time
           </span>
         </div>
-
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6 mb-7">
           <div className="flex-1 min-w-0">
 
@@ -227,7 +264,7 @@ export default function RoomDetailsModal({
               </span>
 
               <span className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.07] text-gray-600">
-                <Lock size={11} /> Open
+                <Lock size={11} /> {isDebateRoom ? "Debate Room" : "Open Conversation"}
               </span>
             </div>
 
@@ -255,12 +292,44 @@ export default function RoomDetailsModal({
           </div>
 
           <div className="flex flex-col gap-2 sm:items-end flex-shrink-0">
+            {isDebateRoom && (
+              <fieldset className="w-full sm:w-auto">
+                <legend className="mb-2 text-xs font-medium text-gray-300">
+                  Choose your position
+                </legend>
+                <div className="flex gap-2">
+                  {(["for", "against"] as const).map((side) => (
+                    <button
+                      key={side}
+                      type="button"
+                      aria-pressed={selectedSide === side}
+                      disabled={Boolean(currentMember?.side)}
+                      onClick={() => setSelectedSide(side)}
+                      className={`rounded-lg border px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                        selectedSide === side
+                          ? side === "for"
+                            ? "border-emerald-400 bg-emerald-500/15 text-emerald-300"
+                            : "border-rose-400 bg-rose-500/15 text-rose-300"
+                          : "border-white/10 bg-white/[0.03] text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      {side === "for" ? "For" : "Against"}
+                    </button>
+                  ))}
+                </div>
+                {currentMember?.side && (
+                  <p className="mt-1 text-[10px] text-gray-500">
+                    Your saved position is selected.
+                  </p>
+                )}
+              </fieldset>
+            )}
             <button
               className={`group flex items-center gap-2.5 px-6 py-3 rounded-xl font-semibold text-sm transition-all duration-200 active:scale-95 ${isJoining
                 ? "bg-green-500/50 text-white/70 cursor-not-allowed"
                 : "bg-green-500 hover:bg-green-400 text-white shadow-lg shadow-green-500/20 hover:shadow-green-500/30"
                 }`}
-              disabled={isJoining}
+              disabled={isJoining || (isDebateRoom && !selectedSide)}
               onClick={joinRoomHandler}
             >
               <DoorOpen size={18} className={isJoining ? "" : "group-hover:translate-x-0.5 transition-transform duration-200"} />
@@ -366,6 +435,15 @@ export default function RoomDetailsModal({
                               : "Member"}
                         </span>
                       </div>
+                      {isDebateRoom && member.side && (
+                        <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          member.side === "for"
+                            ? "bg-emerald-500/10 text-emerald-300"
+                            : "bg-rose-500/10 text-rose-300"
+                        }`}>
+                          {member.side === "for" ? "For" : "Against"}
+                        </span>
+                      )}
                     </div>
                   </div>
                 );

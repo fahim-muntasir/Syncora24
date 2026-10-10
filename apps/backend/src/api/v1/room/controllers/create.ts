@@ -25,6 +25,7 @@ export const createRoomController = async (
       level: data.level,
       status: 'active',
       maxParticipants: data.maxParticipants,
+      type: data.type,
     });
 
     // Emit socket event to all connected clients

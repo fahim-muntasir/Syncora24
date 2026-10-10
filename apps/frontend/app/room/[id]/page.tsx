@@ -131,15 +131,78 @@ export default function VideoConference() {
     return unsubscribe;
   }, [roomId, dispatch]);
 
-  // Emit leave on tab/window close
   useEffect(() => {
-    const handleBeforeUnload = () => {
-      roomSocketManager.emit("leave-room", { roomId });
+    const unsubscribeJoined = roomSocketManager.on(
+      "room-member-joined",
+      (payload: unknown) => {
+        const event = payload as {
+          roomId: string;
+          newMember: RoomType["members"][number];
+        };
+        if (event.roomId !== roomId) return;
+        setRoom((previous) => {
+          if (!previous) return previous;
+          const exists = previous.members.some(
+            (member) => member.id === event.newMember.id,
+          );
+          return {
+            ...previous,
+            members: exists
+              ? previous.members.map((member) =>
+                  member.id === event.newMember.id ? event.newMember : member,
+                )
+              : [...previous.members, event.newMember],
+          };
+        });
+      },
+    );
+    const unsubscribeSide = roomSocketManager.on(
+      "room-member-side-updated",
+      (payload: unknown) => {
+        const event = payload as {
+          roomId: string;
+          memberId: string;
+          side: "for" | "against";
+        };
+        if (event.roomId !== roomId) return;
+        setRoom((previous) =>
+          previous
+            ? {
+                ...previous,
+                members: previous.members.map((member) =>
+                  member.id === event.memberId
+                    ? { ...member, side: event.side }
+                    : member,
+                ),
+              }
+            : previous,
+        );
+      },
+    );
+    const unsubscribeRemoved = roomSocketManager.on(
+      "room-member-removed",
+      (payload: unknown) => {
+        const event = payload as { roomId: string; memberId: string };
+        if (event.roomId !== roomId) return;
+        setRoom((previous) =>
+          previous
+            ? {
+                ...previous,
+                members: previous.members.filter(
+                  (member) => member.id !== event.memberId,
+                ),
+              }
+            : previous,
+        );
+      },
+    );
+
+    return () => {
+      unsubscribeJoined();
+      unsubscribeSide();
+      unsubscribeRemoved();
     };
-    const inRoom = room?.members.some((m) => m.id === currentUser?.id);
-    if (inRoom) window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [room, currentUser, roomId]);
+  }, [roomId]);
 
   useEffect(() => {
     const unsubscribe = roomSocketManager.on(

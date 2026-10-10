@@ -57,6 +57,13 @@ function getActivityConfig(
         textColor: "text-gray-500",
       };
 
+    case "member-side-changed":
+      return {
+        icon: <UserPlus size={13} strokeWidth={1.8} />,
+        iconColor: "text-violet-400/75",
+        textColor: "text-gray-500",
+      };
+
     case "member-left":
       return {
         icon: <DoorOpen size={13} strokeWidth={1.8} />,
@@ -156,6 +163,25 @@ function renderActivityText(
             {activity.userName}
           </span>{" "}
           joined the room
+          {activity.side && (
+            <>
+              {" "}for{" "}
+              <span className={activity.side === "for" ? "text-emerald-300" : "text-rose-300"}>
+                {activity.side === "for" ? "For" : "Against"}
+              </span>
+            </>
+          )}
+        </>
+      );
+
+    case "member-side-changed":
+      return (
+        <>
+          <span className="text-gray-400 font-medium">{activity.userName}</span>{" "}
+          changed their position to{" "}
+          <span className={activity.side === "for" ? "text-emerald-300" : "text-rose-300"}>
+            {activity.side === "for" ? "For" : "Against"}
+          </span>
         </>
       );
 

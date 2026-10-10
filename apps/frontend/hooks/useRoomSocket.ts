@@ -28,10 +28,12 @@ import {
 import { useAppDispatch, useAppSelector } from "@/libs/hooks";
 import { useLazyGetIceServersQuery } from "@/libs/features/webrtc/webrtcApiSlice";
 import toast from "react-hot-toast";
+import type { DebateSide } from "@/types/room";
 
 export interface RoomUser {
   id: string;
   name: string;
+  side?: DebateSide;
 }
 
 export interface UseRoomSocketOptions {
@@ -44,7 +46,7 @@ export interface UseRoomSocketOptions {
 }
 
 export interface UseRoomSocketReturn {
-  joinRoom: () => Promise<void>;
+  joinRoom: (side?: DebateSide) => Promise<void>;
   leaveRoom: () => void;
   hasJoined: boolean;
   localVideoStream: MediaStream | null;
@@ -84,6 +86,7 @@ export function useRoomSocket({
   const peerManagerRef = useRef<PeerManager | null>(null);
   const socketToUserRef = useRef<Map<string, string>>(new Map());
   const joiningRef = useRef(false);
+  const selectedDebateSideRef = useRef<DebateSide | undefined>(undefined);
   const videoStreamRef = useRef<MediaStream | null>(null);
   const screenShareStreamRef = useRef<MediaStream | null>(null);
   const screenShareOwnerRef = useRef<string | null>(null);
@@ -252,7 +255,7 @@ export function useRoomSocket({
   const [getIceServers] = useLazyGetIceServersQuery();
 
   // ── Join ────────────────────────────────────────────────────────────────────
-  const joinRoom = useCallback(async () => {
+  const joinRoom = useCallback(async (side?: DebateSide) => {
     if (!roomId || !currentUserId) {
       throw new Error("Missing room or user information");
     }
@@ -262,6 +265,7 @@ export function useRoomSocket({
     }
 
     joiningRef.current = true;
+    if (side) selectedDebateSideRef.current = side;
 
     try {
       const response = await getIceServers().unwrap();
@@ -341,7 +345,12 @@ export function useRoomSocket({
         success: boolean;
         message?: string;
         code?: string;
-      }>("join-room", { roomId });
+      }>("join-room", {
+        roomId,
+        ...(selectedDebateSideRef.current
+          ? { side: selectedDebateSideRef.current }
+          : {}),
+      });
 
       hasJoinedRef.current = true;
       dispatch(
@@ -433,7 +442,12 @@ export function useRoomSocket({
           success: boolean;
           message?: string;
           code?: string;
-        }>("join-room", { roomId })
+        }>("join-room", {
+          roomId,
+          ...(selectedDebateSideRef.current
+            ? { side: selectedDebateSideRef.current }
+            : {}),
+        })
         .then(() => {
           dispatch(
             setParticipantConnectionState({

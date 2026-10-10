@@ -6,3 +6,4 @@ export * from "./removeMember";
 export * from "./endRoom";
 export * from "./kickMember";
 export * from "./setModeratorRole";
+export * from "./setMemberSide";

@@ -7,6 +7,7 @@ import {
   endRoom,
   kickMember,
   setModeratorRole,
+  setMemberSide,
 } from "../lib/room";
 import {
   muteUser,
@@ -19,6 +20,10 @@ import {
 import { handleJoinRoom } from "./handlers/room/joinRoom";
 import { authenticateRoomSocket } from "./authenticateRoomSocket";
 import redis from "../redis";
+import {
+  changeMemberSideSchema,
+  type DebateSide,
+} from "../schemas/roomSchema";
 
 let io: Server | null = null;
 let publicIo: Namespace | null = null;
@@ -64,7 +69,7 @@ export const initializeSocket = (server: HttpServer) => {
     socket.on(
       "join-room",
       async (
-        { roomId }: { roomId: string },
+        { roomId, side }: { roomId: string; side?: DebateSide },
         callback?: (response: {
           success: boolean;
           message?: string;
@@ -75,7 +80,7 @@ export const initializeSocket = (server: HttpServer) => {
           roomIo!,
           publicIo!,
           socket,
-          { roomId },
+          { roomId, side },
         );
 
         if (response.success) {
@@ -89,6 +94,61 @@ export const initializeSocket = (server: HttpServer) => {
         }
 
         callback?.(response);
+      },
+    );
+
+    socket.on(
+      "change-debate-side",
+      async (
+        payload: unknown,
+        callback?: (response: { success: boolean; message?: string }) => void,
+      ) => {
+        const parsedPayload = changeMemberSideSchema.safeParse(payload);
+        if (!parsedPayload.success) {
+          callback?.({ success: false, message: "Choose For or Against." });
+          return;
+        }
+        const { roomId, side } = parsedPayload.data;
+        if (socket.data.roomId !== roomId) {
+          callback?.({ success: false, message: "Join the room before changing your position." });
+          return;
+        }
+
+        try {
+          const result = await setMemberSide({
+            roomId,
+            memberId: socket.data.user.id,
+            side,
+          });
+          socket.data.userSide = side;
+
+          roomIo?.to(roomId).emit("room-member-side-updated", {
+            roomId,
+            memberId: socket.data.user.id,
+            side,
+          });
+          publicIo?.emit("public-room-member-side-updated", {
+            roomId,
+            memberId: socket.data.user.id,
+            side,
+          });
+          if (result.previousSide && result.previousSide !== side) {
+            emitRoomActivity(roomId, {
+              type: "member-side-changed",
+              userId: socket.data.user.id,
+              userName: socket.data.userName ?? socket.data.user.id,
+              previousSide: result.previousSide,
+              side,
+            });
+          }
+
+          callback?.({ success: true });
+        } catch (error) {
+          const message = error instanceof Error
+            ? error.message
+            : "Unable to update your debate position.";
+          callback?.({ success: false, message });
+        }
       },
     );
 

@@ -1,9 +1,12 @@
 import { Namespace, Socket } from "socket.io";
 import { addMember } from "../../../lib/room";
 import { getRoomModerationState } from "../../../lib/moderation";
+import { findSingleItem } from "../../../lib/room";
+import type { DebateSide } from "../../../schemas/roomSchema";
 
 type JoinRoomPayload = {
   roomId: string;
+  side?: DebateSide;
 };
 
 type JoinRoomResponse = {
@@ -16,7 +19,7 @@ export const handleJoinRoom = async (
   io: Namespace,
   publicIo: Namespace,
   socket: Socket,
-  { roomId }: JoinRoomPayload,
+  { roomId, side }: JoinRoomPayload,
 ): Promise<JoinRoomResponse> => {
   try {
     const user = {
@@ -38,8 +41,10 @@ export const handleJoinRoom = async (
       member: {
         id: user.id,
         name: user.name,
+        side,
       },
     });
+    const room = await findSingleItem(roomId);
 
     
     // Get participants BEFORE adding this socket to the Socket.IO room.
@@ -54,6 +59,9 @@ export const handleJoinRoom = async (
         user: {
           id: existingSocket.data.userId,
           name: existingSocket.data.userName,
+          side: room?.members?.find(
+            (member: { id: string }) => member.id === existingSocket.data.userId,
+          )?.side,
         },
         socketId: existingSocket.id,
       }))
@@ -73,6 +81,9 @@ export const handleJoinRoom = async (
     socket.data.roomId = roomId;
     socket.data.userId = user.id;
     socket.data.userName = user.name;
+    socket.data.userSide = room?.members?.find(
+      (member: { id: string }) => member.id === user.id,
+    )?.side;
     socket.data.socketId = socket.id;
 
     const moderationState = await getRoomModerationState(roomId);
@@ -116,6 +127,7 @@ export const handleJoinRoom = async (
         user: {
           id: user.id,
           name: user.name,
+          side: socket.data.userSide,
         },
         socketId: socket.id,
       });
@@ -127,6 +139,7 @@ export const handleJoinRoom = async (
         newMember: {
           id: user.id,
           name: user.name,
+          side: socket.data.userSide,
         },
       });
       io.to(roomId).emit("room-member-joined", {
@@ -134,13 +147,21 @@ export const handleJoinRoom = async (
         newMember: {
           id: user.id,
           name: user.name,
+          side: socket.data.userSide,
         },
       });
       io.to(roomId).emit("room-activity", {
         type: "member-joined",
         userId: user.id,
         userName: user.name,
+        side: socket.data.userSide,
         timestamp: Date.now(),
+      });
+    } else if (memberResult.sideAssigned) {
+      io.to(roomId).emit("room-member-side-updated", {
+        roomId,
+        memberId: user.id,
+        side: socket.data.userSide,
       });
     }
 

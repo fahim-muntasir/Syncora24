@@ -6,6 +6,7 @@ export type InitialValues = {
   language: string;
   level: ProficiencyLevel;
   maxParticipants: number;
+  type: "open" | "debate";
 };
 
 export type CreateRoomModalProps = {
