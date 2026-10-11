@@ -2,6 +2,7 @@ import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 
 export type ParticipantConnectionState =
   | "connected"
+  | "connection-lost"
   | "reconnecting"
   | "disconnected";
 
@@ -50,7 +51,9 @@ const roomSlice = createSlice({
       state.isMuted = action.payload;
     },
     setSpeakingUser: (state, action: PayloadAction<string>) => {
-      state.speakingUsers = [...state.speakingUsers, action.payload];
+      if (!state.speakingUsers.includes(action.payload)) {
+        state.speakingUsers.push(action.payload);
+      }
     },
     removeSpeakingUser: (state, action: PayloadAction<string>) => {
       state.speakingUsers = state.speakingUsers.filter(
@@ -172,6 +175,12 @@ const roomSlice = createSlice({
     ) => {
       delete state.participantConnectionStates[action.payload];
     },
+    clearParticipantPresenceState: (state) => {
+      state.speakingUsers = [];
+      state.unMutedUsers = [];
+      state.volumeLevels = {};
+      state.participantConnectionStates = {};
+    },
 
     clearVolumeLevels: (state) => {
       state.volumeLevels = {};
@@ -212,6 +221,7 @@ export const {
   clearVolumeLevels,
   setParticipantConnectionState,
   removeParticipantConnectionState,
+  clearParticipantPresenceState,
 } = roomSlice.actions;
 
 export default roomSlice.reducer;

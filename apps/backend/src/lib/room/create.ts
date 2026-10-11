@@ -10,6 +10,7 @@ type CreateRoomParams = {
   level: string;
   status: string;
   maxParticipants: number;
+  type?: "open" | "debate";
 };
 
 export const createRoom = async ({
@@ -22,6 +23,7 @@ export const createRoom = async ({
   level,
   status,
   maxParticipants,
+  type = "open",
 }: CreateRoomParams) => {
   try {
     const roomKey = `room:${roomId}`;
@@ -35,6 +37,7 @@ export const createRoom = async ({
       description,
       language,
       status,
+      type,
       maxParticipants,
       members: [],
     };

@@ -106,9 +106,20 @@ export default function Chat({
                   }`}
               >
                 {/* Sender name */}
-                <span className="text-[11px] text-gray-500 mb-1 px-1">
-                  {isOwn ? "You" : msg.name}
-                </span>
+                <div className="flex items-center gap-2 mb-1 px-1">
+                  <span className="text-[11px] text-gray-500">
+                    {isOwn ? "You" : msg.name}
+                  </span>
+                  <time
+                    dateTime={new Date(item.timestamp).toISOString()}
+                    className="text-[10px] text-gray-600"
+                  >
+                    {new Date(item.timestamp).toLocaleTimeString([], {
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                  </time>
+                </div>
 
                 {/* Bubble */}
                 <div

@@ -96,6 +96,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
         const track = stream.getAudioTracks()[0];
         if (track) {
           track.enabled = true;
+          track.contentHint = "speech";
 
           const settings = track.getSettings();
           console.log("[AudioContext] Audio track settings:", {

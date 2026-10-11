@@ -59,6 +59,15 @@ export type RoomActivity =
       type: "member-joined";
       userId: string;
       userName: string;
+      side?: "for" | "against";
+      timestamp: number;
+    }
+  | {
+      type: "member-side-changed";
+      userId: string;
+      userName: string;
+      previousSide: "for" | "against";
+      side: "for" | "against";
       timestamp: number;
     }
   | { type: "member-left"; userId: string; userName: string; timestamp: number }
@@ -128,6 +137,18 @@ export type RoomActivity =
     }
   | {
       type: "camera-stopped";
+      userId: string;
+      userName: string;
+      timestamp: number;
+    }
+  | {
+      type: "microphone-started" | "microphone-stopped";
+      userId: string;
+      userName: string;
+      timestamp: number;
+    }
+  | {
+      type: "screen-share-started" | "screen-share-stopped";
       userId: string;
       userName: string;
       timestamp: number;

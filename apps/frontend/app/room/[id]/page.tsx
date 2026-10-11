@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { useGetSingleRoomQuery } from "@/libs/features/room/roomApiSlice";
 import { RoomType } from "@/types/room";
@@ -26,6 +26,9 @@ export default function VideoConference() {
   const [isJoined, setIsJoined] = useState(false);
   const [showRoomEndedModal, setShowRoomEndedModal] = useState(false);
   const [showRoomKickedModal, setShowRoomKickedModal] = useState(false);
+  const locallyDisconnectedMember = useRef<
+    RoomType["members"][number] | null
+  >(null);
 
   const { id } = useParams();
   const roomId = Array.isArray(id) ? id[0] : (id ?? "");
@@ -36,25 +39,78 @@ export default function VideoConference() {
   const moderatorIds = useAppSelector((state) => state.room.moderatorIds);
   const dispatch = useAppDispatch();
 
-  const handleUserJoined = ({ user }: { user: { id: string; name: string } }) => {
+  const handleUserJoined = useCallback(
+    ({ user }: { user: { id: string; name: string } }) => {
+      setRoom((prev) => {
+        if (!prev) return prev;
+        if (prev.members.some((m) => m.id === user.id)) return prev;
+        return { ...prev, members: [...prev.members, user] };
+      });
+    },
+    [],
+  );
+
+  const handleUserLeft = useCallback(
+    ({ memberId }: { memberId: string }) => {
+      setRoom((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          members: prev.members.filter((m) => m.id !== memberId),
+        };
+      });
+    },
+    [],
+  );
+
+  const handleLocalDisconnect = useCallback(() => {
+    if (!currentUser?.id) return;
     setRoom((prev) => {
       if (!prev) return prev;
-      if (prev.members.some((m) => m.id === user.id)) return prev;
-      return { ...prev, members: [...prev.members, user] };
+      const member = prev.members.find(
+        (candidate) => candidate.id === currentUser.id,
+      );
+      if (!member) return prev;
+      locallyDisconnectedMember.current = member;
+      return {
+        ...prev,
+        members: prev.members.filter((member) => member.id !== currentUser.id),
+      };
     });
-  };
+  }, [currentUser?.id]);
 
-  const handleUserLeft = ({ memberId }: { memberId: string }) => {
+  const handleLocalReconnect = useCallback(() => {
+    const member = locallyDisconnectedMember.current;
+    if (!member) return;
     setRoom((prev) => {
-      if (!prev) return prev;
-      return { ...prev, members: prev.members.filter((m) => m.id !== memberId) };
+      if (
+        !prev ||
+        prev.members.some((current) => current.id === member.id)
+      ) {
+        return prev;
+      }
+      return { ...prev, members: [...prev.members, member] };
     });
-  };
+    locallyDisconnectedMember.current = null;
+  }, []);
 
-  const handleKicked = () => {
+  const handleLocalLeave = useCallback((memberId: string) => {
+    locallyDisconnectedMember.current = null;
+    setRoom((prev) => {
+      if (!prev || !prev.members.some((member) => member.id === memberId)) {
+        return prev;
+      }
+      return {
+        ...prev,
+        members: prev.members.filter((member) => member.id !== memberId),
+      };
+    });
+  }, []);
+
+  const handleKicked = useCallback(() => {
     setIsJoined(false);
     setShowRoomKickedModal(true);
-  };
+  }, []);
 
   const {
     joinRoom,
@@ -81,8 +137,22 @@ export default function VideoConference() {
     ),
     onUserJoined: handleUserJoined,
     onUserLeft: handleUserLeft,
+    onLocalLeave: handleLocalLeave,
+    onLocalDisconnect: handleLocalDisconnect,
+    onLocalReconnect: handleLocalReconnect,
     onKicked: handleKicked,
   });
+
+  const handleLeaveRoom = useCallback(async () => {
+    try {
+      await leaveRoom();
+      setIsJoined(false);
+      setShowRoomEndedModal(false);
+      setShowRoomKickedModal(false);
+    } catch {
+      // The hook reports the leave failure and keeps the participant on the room page.
+    }
+  }, [leaveRoom]);
 
   useEffect(() => {
     if (data && isSuccess && isRoomResponse(data)) setRoom(data.data);
@@ -131,15 +201,78 @@ export default function VideoConference() {
     return unsubscribe;
   }, [roomId, dispatch]);
 
-  // Emit leave on tab/window close
   useEffect(() => {
-    const handleBeforeUnload = () => {
-      roomSocketManager.emit("leave-room", { roomId });
+    const unsubscribeJoined = roomSocketManager.on(
+      "room-member-joined",
+      (payload: unknown) => {
+        const event = payload as {
+          roomId: string;
+          newMember: RoomType["members"][number];
+        };
+        if (event.roomId !== roomId) return;
+        setRoom((previous) => {
+          if (!previous) return previous;
+          const exists = previous.members.some(
+            (member) => member.id === event.newMember.id,
+          );
+          return {
+            ...previous,
+            members: exists
+              ? previous.members.map((member) =>
+                  member.id === event.newMember.id ? event.newMember : member,
+                )
+              : [...previous.members, event.newMember],
+          };
+        });
+      },
+    );
+    const unsubscribeSide = roomSocketManager.on(
+      "room-member-side-updated",
+      (payload: unknown) => {
+        const event = payload as {
+          roomId: string;
+          memberId: string;
+          side: "for" | "against";
+        };
+        if (event.roomId !== roomId) return;
+        setRoom((previous) =>
+          previous
+            ? {
+                ...previous,
+                members: previous.members.map((member) =>
+                  member.id === event.memberId
+                    ? { ...member, side: event.side }
+                    : member,
+                ),
+              }
+            : previous,
+        );
+      },
+    );
+    const unsubscribeRemoved = roomSocketManager.on(
+      "room-member-removed",
+      (payload: unknown) => {
+        const event = payload as { roomId: string; memberId: string };
+        if (event.roomId !== roomId) return;
+        setRoom((previous) =>
+          previous
+            ? {
+                ...previous,
+                members: previous.members.filter(
+                  (member) => member.id !== event.memberId,
+                ),
+              }
+            : previous,
+        );
+      },
+    );
+
+    return () => {
+      unsubscribeJoined();
+      unsubscribeSide();
+      unsubscribeRemoved();
     };
-    const inRoom = room?.members.some((m) => m.id === currentUser?.id);
-    if (inRoom) window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [room, currentUser, roomId]);
+  }, [roomId]);
 
   useEffect(() => {
     const unsubscribe = roomSocketManager.on(
@@ -174,18 +307,12 @@ export default function VideoConference() {
 
       <RoomEndedModal
         isOpen={showRoomEndedModal}
-        onLeave={() => {
-          leaveRoom();
-          window.location.replace("/");
-        }}
+        onLeave={handleLeaveRoom}
       />
 
       <RoomKickedModal
         isOpen={showRoomKickedModal}
-        onLeave={() => {
-          leaveRoom();
-          window.location.replace("/");
-        }}
+        onLeave={handleLeaveRoom}
       />
 
       {/* Room layout */}
@@ -208,6 +335,9 @@ export default function VideoConference() {
             stopVideo={stopVideo}
             startScreenShare={startScreenShare}
             stopScreenShare={stopScreenShare}
+            onLeaveRoom={() => {
+              void handleLeaveRoom();
+            }}
             selectScreenShare={selectScreenShare}
             selectCamera={selectCamera}
             // isScreenSharing={isScreenSharing}

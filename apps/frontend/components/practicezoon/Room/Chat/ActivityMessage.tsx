@@ -11,6 +11,8 @@ import {
   AlertTriangle,
   Video,
   VideoOff,
+  MonitorUp,
+  MonitorOff,
 } from "lucide-react";
 import { RoomActivity } from "@/types/chat";
 
@@ -32,10 +34,19 @@ export default function ActivityMessage({
 
       {/* Activity text */}
       <p
-        className={`text-[11px] leading-5 font-normal ${config.textColor}`}
+        className={`flex-1 text-[11px] leading-5 font-normal ${config.textColor}`}
       >
         {renderActivityText(activity)}
       </p>
+      <time
+        dateTime={new Date(activity.timestamp).toISOString()}
+        className="shrink-0 text-[10px] text-gray-600"
+      >
+        {new Date(activity.timestamp).toLocaleTimeString([], {
+          hour: "numeric",
+          minute: "2-digit",
+        })}
+      </time>
     </div>
   );
 }
@@ -54,6 +65,13 @@ function getActivityConfig(
       return {
         icon: <UserPlus size={13} strokeWidth={1.8} />,
         iconColor: "text-emerald-500/70",
+        textColor: "text-gray-500",
+      };
+
+    case "member-side-changed":
+      return {
+        icon: <UserPlus size={13} strokeWidth={1.8} />,
+        iconColor: "text-violet-400/75",
         textColor: "text-gray-500",
       };
 
@@ -134,6 +152,34 @@ function getActivityConfig(
         textColor: "text-gray-500",
       };
 
+    case "microphone-started":
+      return {
+        icon: <Mic size={13} strokeWidth={1.8} />,
+        iconColor: "text-emerald-400/70",
+        textColor: "text-gray-500",
+      };
+
+    case "microphone-stopped":
+      return {
+        icon: <MicOff size={13} strokeWidth={1.8} />,
+        iconColor: "text-gray-500",
+        textColor: "text-gray-500",
+      };
+
+    case "screen-share-started":
+      return {
+        icon: <MonitorUp size={13} strokeWidth={1.8} />,
+        iconColor: "text-emerald-400/70",
+        textColor: "text-gray-500",
+      };
+
+    case "screen-share-stopped":
+      return {
+        icon: <MonitorOff size={13} strokeWidth={1.8} />,
+        iconColor: "text-gray-500",
+        textColor: "text-gray-500",
+      };
+
     case "camera-permission-changed":
       return {
         icon: activity.enabled
@@ -156,6 +202,25 @@ function renderActivityText(
             {activity.userName}
           </span>{" "}
           joined the room
+          {activity.side && (
+            <>
+              {" "}for{" "}
+              <span className={activity.side === "for" ? "text-emerald-300" : "text-rose-300"}>
+                {activity.side === "for" ? "For" : "Against"}
+              </span>
+            </>
+          )}
+        </>
+      );
+
+    case "member-side-changed":
+      return (
+        <>
+          <span className="text-gray-400 font-medium">{activity.userName}</span>{" "}
+          changed their position to{" "}
+          <span className={activity.side === "for" ? "text-emerald-300" : "text-rose-300"}>
+            {activity.side === "for" ? "For" : "Against"}
+          </span>
         </>
       );
 
@@ -271,6 +336,38 @@ function renderActivityText(
         <>
           <span className="text-gray-400 font-medium">{activity.userName}</span>{" "}
           stopped their camera
+        </>
+      );
+
+    case "microphone-started":
+      return (
+        <>
+          <span className="text-gray-400 font-medium">{activity.userName}</span>{" "}
+          turned on their microphone
+        </>
+      );
+
+    case "microphone-stopped":
+      return (
+        <>
+          <span className="text-gray-400 font-medium">{activity.userName}</span>{" "}
+          turned off their microphone
+        </>
+      );
+
+    case "screen-share-started":
+      return (
+        <>
+          <span className="text-gray-400 font-medium">{activity.userName}</span>{" "}
+          started sharing their screen
+        </>
+      );
+
+    case "screen-share-stopped":
+      return (
+        <>
+          <span className="text-gray-400 font-medium">{activity.userName}</span>{" "}
+          stopped sharing their screen
         </>
       );
 

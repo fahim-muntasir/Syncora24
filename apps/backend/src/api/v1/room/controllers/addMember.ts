@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import { successResponse } from "../../../../utils/responseHelper";
 import { addMember } from "../../../../lib/room";
+import { joinRoomSchema } from "../../../../schemas/roomSchema";
 
 export const addMembersController = async (
   req: Request,
@@ -14,9 +15,11 @@ export const addMembersController = async (
       throw new Error("Authenticated user information is required");
     }
 
+    const { side } = joinRoomSchema.parse(req.body ?? {});
     const member = {
       id: req.user?.id,
       name: req.user?.fullName,
+      side,
     }
     const result = await addMember({ roomId, member });
 

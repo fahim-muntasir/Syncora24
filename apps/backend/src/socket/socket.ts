@@ -7,6 +7,7 @@ import {
   endRoom,
   kickMember,
   setModeratorRole,
+  setMemberSide,
 } from "../lib/room";
 import {
   muteUser,
@@ -19,6 +20,11 @@ import {
 import { handleJoinRoom } from "./handlers/room/joinRoom";
 import { authenticateRoomSocket } from "./authenticateRoomSocket";
 import redis from "../redis";
+import {
+  changeMemberSideSchema,
+  type DebateSide,
+} from "../schemas/roomSchema";
+import { withMemberTransition } from "./memberTransitionQueue";
 
 let io: Server | null = null;
 let publicIo: Namespace | null = null;
@@ -64,31 +70,104 @@ export const initializeSocket = (server: HttpServer) => {
     socket.on(
       "join-room",
       async (
-        { roomId }: { roomId: string },
+        {
+          roomId,
+          side,
+          reconnectOnly,
+        }: { roomId: string; side?: DebateSide; reconnectOnly?: boolean },
         callback?: (response: {
           success: boolean;
           message?: string;
           code?: string;
         }) => void,
       ) => {
-        const response = await handleJoinRoom(
-          roomIo!,
-          publicIo!,
-          socket,
-          { roomId },
-        );
+        const userId = socket.data.user.id;
+        try {
+          const response = await withMemberTransition(
+            getDisconnectKey(roomId, userId),
+            async () => {
+              const result = await handleJoinRoom(
+                roomIo!,
+                publicIo!,
+                socket,
+                { roomId, side, reconnectOnly },
+              );
 
-        if (response.success) {
-          const userId = socket.data.user.id;
-          clearPendingDisconnect(roomId, userId);
-          roomIo?.to(roomId).emit("participant-connection-state", {
-            roomId,
-            userId,
-            state: "connected",
+              if (result.success) {
+                clearPendingDisconnect(roomId, userId);
+                roomIo?.to(roomId).emit("participant-connection-state", {
+                  roomId,
+                  userId,
+                  state: "connected",
+                });
+              }
+
+              return result;
+            },
+          );
+          callback?.(response);
+        } catch (error) {
+          console.error(`[Socket] Failed to join room ${roomId}:`, error);
+          callback?.({
+            success: false,
+            message: "Unable to join the room. Please try again.",
           });
         }
+      },
+    );
 
-        callback?.(response);
+    socket.on(
+      "change-debate-side",
+      async (
+        payload: unknown,
+        callback?: (response: { success: boolean; message?: string }) => void,
+      ) => {
+        const parsedPayload = changeMemberSideSchema.safeParse(payload);
+        if (!parsedPayload.success) {
+          callback?.({ success: false, message: "Choose For or Against." });
+          return;
+        }
+        const { roomId, side } = parsedPayload.data;
+        if (socket.data.roomId !== roomId) {
+          callback?.({ success: false, message: "Join the room before changing your position." });
+          return;
+        }
+
+        try {
+          const result = await setMemberSide({
+            roomId,
+            memberId: socket.data.user.id,
+            side,
+          });
+          socket.data.userSide = side;
+
+          roomIo?.to(roomId).emit("room-member-side-updated", {
+            roomId,
+            memberId: socket.data.user.id,
+            side,
+          });
+          publicIo?.emit("public-room-member-side-updated", {
+            roomId,
+            memberId: socket.data.user.id,
+            side,
+          });
+          if (result.previousSide && result.previousSide !== side) {
+            emitRoomActivity(roomId, {
+              type: "member-side-changed",
+              userId: socket.data.user.id,
+              userName: socket.data.userName ?? socket.data.user.id,
+              previousSide: result.previousSide,
+              side,
+            });
+          }
+
+          callback?.({ success: true });
+        } catch (error) {
+          const message = error instanceof Error
+            ? error.message
+            : "Unable to update your debate position.";
+          callback?.({ success: false, message });
+        }
       },
     );
 
@@ -115,21 +194,33 @@ export const initializeSocket = (server: HttpServer) => {
       socket.to(roomId).emit("user-speaking", { roomId, userId, speaking });
     });
 
-    socket.on("screen-share-state", ({ roomId, sharing, streamId }) => {
-      if (!roomId || socket.data.roomId !== roomId) return;
-      const userId = socket.data.user.id;
+    socket.on(
+      "screen-share-state",
+      ({ roomId, sharing, streamId, activity = true }) => {
+        if (!roomId || socket.data.roomId !== roomId) return;
+        const userId = socket.data.user.id;
+        const isSharing = Boolean(sharing);
+        const didStateChange = Boolean(socket.data.isScreenSharing) !== isSharing;
 
-      socket.data.isScreenSharing = Boolean(sharing);
-      socket.data.screenShareStreamId = sharing ? streamId : undefined;
+        socket.data.isScreenSharing = isSharing;
+        socket.data.screenShareStreamId = sharing ? streamId : undefined;
 
-      roomIo?.to(roomId).emit("screen-share-state", {
-        roomId,
-        userId,
-        userName: socket.data.userName ?? userId,
-        sharing: Boolean(sharing),
-        streamId,
-      });
-    });
+        roomIo?.to(roomId).emit("screen-share-state", {
+          roomId,
+          userId,
+          userName: socket.data.userName ?? userId,
+          sharing: isSharing,
+          streamId,
+        });
+        if (activity && didStateChange) {
+          emitRoomActivity(roomId, {
+            type: isSharing ? "screen-share-started" : "screen-share-stopped",
+            userId,
+            userName: socket.data.userName ?? userId,
+          });
+        }
+      },
+    );
 
     // mute user
     socket.on("user-mute-status", ({ roomId, isUnMuted }) => {
@@ -141,53 +232,86 @@ export const initializeSocket = (server: HttpServer) => {
 
       // Broadcast to others in the same room
       socket.to(roomId).emit("user-mute-status", { roomId, userId, isUnMuted });
+      emitRoomActivity(roomId, {
+        type: isUnMuted ? "microphone-started" : "microphone-stopped",
+        userId,
+        userName: socket.data.userName ?? userId,
+      });
     });
 
-    socket.on("leave-room", async ({ roomId }) => {
-      const memberId = socket.data.user.id;
-      if (socket.data.roomId !== roomId) return;
+    socket.on(
+      "leave-room",
+      async (
+        { roomId }: { roomId: string },
+        callback?: (response: { success: boolean; message?: string }) => void,
+      ) => {
+        const memberId = socket.data.user.id;
+        try {
+          await withMemberTransition(
+            getDisconnectKey(roomId, memberId),
+            async () => {
+              if (socket.data.roomId !== roomId) return;
 
-      clearPendingDisconnect(roomId, memberId);
-      const room = await findSingleItem(roomId);
-      const userName = socket.data.userName ?? getMemberName(room ?? {}, memberId);
-      socket.leave(roomId);
-      socket.data.roomId = undefined;
+              clearPendingDisconnect(roomId, memberId);
+              const room = await findSingleItem(roomId);
+              const userName =
+                socket.data.userName ?? getMemberName(room ?? {}, memberId);
 
-      try {
-        await removeMember({ roomId, memberId });
+              await removeMember({ roomId, memberId });
+              const memberSockets = (
+                await roomIo!.in(roomId).fetchSockets()
+              ).filter((roomSocket) => roomSocket.data.userId === memberId);
+              const wasScreenSharing = memberSockets.some((roomSocket) =>
+                Boolean(roomSocket.data.isScreenSharing),
+              );
 
-        publicIo?.emit("public-room-member-removed", {
-          roomId,
-          memberId,
-        });
-        roomIo?.to(roomId).emit("room-member-removed", {
-          roomId,
-          memberId,
-        });
-      } catch (err) {
-        console.error("Failed to remove member:", err);
-      }
+              if (wasScreenSharing) {
+                roomIo?.to(roomId).emit("screen-share-state", {
+                  roomId,
+                  userId: memberId,
+                  sharing: false,
+                });
+              }
 
-      if (socket.data.isScreenSharing) {
-        roomIo?.to(roomId).emit("screen-share-state", {
-          roomId,
-          userId: memberId,
-          sharing: false,
-        });
-      }
+              publicIo?.emit("public-room-member-removed", {
+                roomId,
+                memberId,
+              });
+              roomIo?.to(roomId).emit("room-member-removed", {
+                roomId,
+                memberId,
+              });
 
-      roomIo?.to(roomId).emit("participant-connection-state", {
-        roomId,
-        userId: memberId,
-        state: "disconnected",
-      });
-      roomIo?.to(roomId).emit("user-left", {
-        roomId,
-        memberId,
-        socketId: socket.id,
-      });
-      emitRoomActivity(roomId, { type: "member-left", userId: memberId, userName });
-    });
+              roomIo?.to(roomId).emit("user-left", {
+                roomId,
+                memberId,
+                socketId: socket.id,
+              });
+
+              for (const memberSocket of memberSockets) {
+                memberSocket.data.roomId = undefined;
+                memberSocket.data.isScreenSharing = false;
+                memberSocket.data.screenShareStreamId = undefined;
+                await memberSocket.leave(roomId);
+              }
+
+              emitRoomActivity(roomId, {
+                type: "member-left",
+                userId: memberId,
+                userName,
+              });
+            },
+          );
+          callback?.({ success: true });
+        } catch (error) {
+          console.error(`[Socket] Failed to leave room ${roomId}:`, error);
+          callback?.({
+            success: false,
+            message: "Unable to leave the room. Please try again.",
+          });
+        }
+      },
+    );
 
     socket.on("kick-member", async ({ roomId, targetUserId }) => {
       try {
@@ -508,44 +632,57 @@ export const initializeSocket = (server: HttpServer) => {
       },
     );
 
-    socket.on("camera-state", async ({ roomId, cameraEnabled }) => {
-      if (socket.data.roomId !== roomId) return;
-
-      const room = await findSingleItem(roomId);
-      if (!room) return;
-
-      const userId = socket.data.user.id;
-      const privileged =
-        room.hostId === userId || (await canModerateRoom(roomId, userId));
-      const memberCameraDisabled = await redis.sismember(
-        `room:${roomId}:camera-disabled`,
-        userId,
-      );
-      const roomCameraDisabled =
-        (await redis.get(`room:${roomId}:camera-enabled`)) === "0";
-      const memberCameraAllowed =
-        (await redis.sismember(`room:${roomId}:camera-allowed`, userId)) === 1;
-
-      if (
-        cameraEnabled &&
-        (memberCameraDisabled === 1 ||
-          (roomCameraDisabled && !memberCameraAllowed && !privileged))
-      ) {
-        socket.emit("camera-state", { roomId, userId, cameraEnabled: false });
-        return;
-      }
-
-      roomIo?.to(roomId).emit("camera-state", {
+    socket.on(
+      "camera-state",
+      async ({
         roomId,
-        userId,
-        cameraEnabled: Boolean(cameraEnabled),
-      });
-      emitRoomActivity(roomId, {
-        type: cameraEnabled ? "camera-started" : "camera-stopped",
-        userId,
-        userName: socket.data.userName ?? userId,
-      });
-    });
+        cameraEnabled,
+        activity = true,
+      }: {
+        roomId: string;
+        cameraEnabled: boolean;
+        activity?: boolean;
+      }) => {
+        if (socket.data.roomId !== roomId) return;
+
+        const room = await findSingleItem(roomId);
+        if (!room) return;
+
+        const userId = socket.data.user.id;
+        const privileged =
+          room.hostId === userId || (await canModerateRoom(roomId, userId));
+        const memberCameraDisabled = await redis.sismember(
+          `room:${roomId}:camera-disabled`,
+          userId,
+        );
+        const roomCameraDisabled =
+          (await redis.get(`room:${roomId}:camera-enabled`)) === "0";
+        const memberCameraAllowed =
+          (await redis.sismember(`room:${roomId}:camera-allowed`, userId)) === 1;
+
+        if (
+          cameraEnabled &&
+          (memberCameraDisabled === 1 ||
+            (roomCameraDisabled && !memberCameraAllowed && !privileged))
+        ) {
+          socket.emit("camera-state", { roomId, userId, cameraEnabled: false });
+          return;
+        }
+
+        roomIo?.to(roomId).emit("camera-state", {
+          roomId,
+          userId,
+          cameraEnabled: Boolean(cameraEnabled),
+        });
+        if (activity) {
+          emitRoomActivity(roomId, {
+            type: cameraEnabled ? "camera-started" : "camera-stopped",
+            userId,
+            userName: socket.data.userName ?? userId,
+          });
+        }
+      },
+    );
 
     socket.on("end-room", async ({ roomId }) => {
       try {
@@ -598,59 +735,16 @@ export const initializeSocket = (server: HttpServer) => {
       if (!roomId || !memberId) return;
 
       console.log("User disconnected from room:", roomId, memberId);
+      const key = getDisconnectKey(roomId, memberId);
 
       try {
-        const liveSockets = await roomIo!.in(roomId).fetchSockets();
-        if (
-          liveSockets.some(
-            (liveSocket) => liveSocket.data.userId === memberId,
-          )
-        ) {
-          return;
-        }
-      } catch (error) {
-        console.error(
-          `[Socket] Failed to check active sockets for ${memberId}:`,
-          error,
-        );
-      }
+        await withMemberTransition(key, async () => {
+          if (socket.data.roomId !== roomId) return;
 
-      roomIo?.to(roomId).emit("participant-connection-state", {
-        roomId,
-        userId: memberId,
-        state: "reconnecting",
-      });
-
-      clearPendingDisconnect(roomId, memberId);
-      const key = getDisconnectKey(roomId, memberId);
-      const socketId = socket.id;
-      const userName = socket.data.userName ?? memberId;
-      const wasScreenSharing = Boolean(socket.data.isScreenSharing);
-
-      const timer = setTimeout(async () => {
-        if (pendingDisconnects.get(key) !== timer) return;
-        pendingDisconnects.delete(key);
-
-        try {
-          const currentSockets = await roomIo!.in(roomId).fetchSockets();
-          if (
-            currentSockets.some(
-              (currentSocket) => currentSocket.data.userId === memberId,
-            )
-          ) {
-            roomIo?.to(roomId).emit("participant-connection-state", {
-              roomId,
-              userId: memberId,
-              state: "connected",
-            });
-            return;
-          }
-
-          await removeMember({ roomId, memberId });
-          publicIo?.emit("public-room-member-removed", { roomId, memberId });
-          roomIo?.to(roomId).emit("room-member-removed", { roomId, memberId });
-
+          const wasScreenSharing = Boolean(socket.data.isScreenSharing);
           if (wasScreenSharing) {
+            socket.data.isScreenSharing = false;
+            socket.data.screenShareStreamId = undefined;
             roomIo?.to(roomId).emit("screen-share-state", {
               roomId,
               userId: memberId,
@@ -658,26 +752,81 @@ export const initializeSocket = (server: HttpServer) => {
             });
           }
 
+          const liveSockets = await roomIo!.in(roomId).fetchSockets();
+          if (liveSockets.some((liveSocket) => liveSocket.data.userId === memberId)) {
+            clearPendingDisconnect(roomId, memberId);
+            return;
+          }
+
+          roomIo?.to(roomId).emit("user-speaking", {
+            roomId,
+            userId: memberId,
+            speaking: false,
+          });
           roomIo?.to(roomId).emit("participant-connection-state", {
             roomId,
             userId: memberId,
-            state: "disconnected",
+            state: "connection-lost",
           });
-          roomIo?.to(roomId).emit("user-left", { roomId, memberId, socketId });
-          emitRoomActivity(roomId, {
-            type: "member-left",
-            userId: memberId,
-            userName,
-          });
-        } catch (error) {
-          console.error(
-            `[Socket] Failed to clean up disconnected member ${memberId}:`,
-            error,
-          );
-        }
-      }, DISCONNECT_GRACE_PERIOD_MS);
 
-      pendingDisconnects.set(key, timer);
+          clearPendingDisconnect(roomId, memberId);
+          const socketId = socket.id;
+          const userName = socket.data.userName ?? memberId;
+
+          const timer = setTimeout(() => {
+            void withMemberTransition(key, async () => {
+              if (pendingDisconnects.get(key) !== timer) return;
+
+              try {
+                const currentSockets = await roomIo!.in(roomId).fetchSockets();
+                if (
+                  currentSockets.some(
+                    (currentSocket) => currentSocket.data.userId === memberId,
+                  )
+                ) {
+                  clearPendingDisconnect(roomId, memberId);
+                  roomIo?.to(roomId).emit("participant-connection-state", {
+                    roomId,
+                    userId: memberId,
+                    state: "connected",
+                  });
+                  return;
+                }
+
+                await removeMember({ roomId, memberId });
+                clearPendingDisconnect(roomId, memberId);
+                publicIo?.emit("public-room-member-removed", { roomId, memberId });
+                roomIo?.to(roomId).emit("room-member-removed", { roomId, memberId });
+
+                roomIo?.to(roomId).emit("user-left", { roomId, memberId, socketId });
+                emitRoomActivity(roomId, {
+                  type: "member-left",
+                  userId: memberId,
+                  userName,
+                });
+              } catch (error) {
+                console.error(
+                  `[Socket] Failed to clean up disconnected member ${memberId}:`,
+                  error,
+                );
+                clearPendingDisconnect(roomId, memberId);
+              }
+            }).catch((error: unknown) => {
+              console.error(
+                `[Socket] Failed to finalize disconnect for ${memberId}:`,
+                error,
+              );
+            });
+          }, DISCONNECT_GRACE_PERIOD_MS);
+
+          pendingDisconnects.set(key, timer);
+        });
+      } catch (error) {
+        console.error(
+          `[Socket] Failed to handle disconnect for ${memberId}:`,
+          error,
+        );
+      }
     });
   });
 };

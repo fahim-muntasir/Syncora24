@@ -16,7 +16,6 @@ export default function SearchBox() {
     (state) => state.filter.searchKeywords,
   );
   const [query, setQuery] = useState("");
-  const [isFocused, setIsFocused] = useState(false);
 
   const handleSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -25,86 +24,80 @@ export default function SearchBox() {
   };
 
   return (
-    <div className="relative w-full">
-      <form onSubmit={handleSearch} className="relative w-full">
-        <div
-          className={`group relative flex min-h-10 w-full flex-wrap items-center gap-1.5 rounded-xl border px-3 py-1.5 transition-all duration-200 ${
-            isFocused
-              ? "border-white/[0.16] bg-[#181818] shadow-[0_0_0_3px_rgba(255,255,255,0.025)]"
-              : "border-white/[0.08] bg-[#141414] hover:border-white/[0.12]"
-          }`}
-        >
-          {/* Search icon */}
-          <Search
-            className={`h-4 w-4 shrink-0 transition-colors duration-200 ${
-              isFocused ? "text-gray-300" : "text-gray-500"
-            }`}
-            strokeWidth={1.8}
-          />
+    <form
+      onSubmit={handleSearch}
+      role="search"
+      className="relative w-full"
+    >
+      <div className="group flex min-h-11 w-full flex-wrap items-center gap-1.5 rounded-xl border border-white/[0.07] bg-[#161616] px-3.5 py-1.5 transition-colors duration-200 hover:border-white/[0.12] focus-within:border-white/[0.2] motion-reduce:transition-none">
+        <Search
+          className="h-4 w-4 shrink-0 text-gray-500 transition-colors duration-200 group-focus-within:text-gray-300"
+          strokeWidth={1.8}
+          aria-hidden="true"
+        />
 
-          {/* Search keywords */}
-          {searchKeywords.map((keyword) => (
-            <span
-              key={keyword}
-              className="inline-flex h-6 items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.045] px-2 text-xs font-medium text-gray-300 transition-colors duration-150 hover:border-white/[0.12] hover:bg-white/[0.07]"
+        {searchKeywords.map((keyword) => (
+          <span
+            key={keyword}
+            className="inline-flex h-6 items-center gap-1 rounded-md border border-white/[0.08] bg-white/[0.04] pl-2 pr-1 text-xs font-medium text-gray-300"
+          >
+            <span className="max-w-[180px] truncate">{keyword}</span>
+            <button
+              type="button"
+              onClick={() => dispatch(removeSearchKeyword(keyword))}
+              aria-label={`Remove search keyword ${keyword}`}
+              className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-gray-500 transition-colors hover:bg-white/[0.08] hover:text-gray-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-500/60"
             >
-              <span className="max-w-[180px] truncate">{keyword}</span>
+              <X className="h-3 w-3" strokeWidth={2} />
+            </button>
+          </span>
+        ))}
 
-              <button
-                type="button"
-                onClick={() => dispatch(removeSearchKeyword(keyword))}
-                aria-label={`Remove search keyword ${keyword}`}
-                className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-gray-500 transition-colors hover:bg-white/[0.08] hover:text-gray-200"
-              >
-                <X className="h-3 w-3" strokeWidth={2} />
-              </button>
-            </span>
-          ))}
+        <input
+          type="text"
+          value={query}
+          placeholder="Search rooms, topics, languages, levels or members"
+          aria-label="Search rooms"
+          autoComplete="off"
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(event) => {
+            if (
+              event.key === "Backspace" &&
+              query.length === 0 &&
+              searchKeywords.length > 0
+            ) {
+              event.preventDefault();
+              dispatch(
+                removeSearchKeyword(
+                  searchKeywords[searchKeywords.length - 1],
+                ),
+              );
+            }
+          }}
+          className="h-6 min-w-[160px] flex-1 truncate bg-transparent text-sm text-gray-200 outline-none placeholder:text-gray-600"
+        />
 
-          {/* Search input */}
-          <input
-            type="text"
-            value={query}
-            placeholder="Search rooms, topics, languages, levels, or members..."
-            autoComplete="off"
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(event) => {
-              if (
-                event.key === "Backspace" &&
-                query.length === 0 &&
-                searchKeywords.length > 0
-              ) {
-                event.preventDefault();
-                dispatch(
-                  removeSearchKeyword(
-                    searchKeywords[searchKeywords.length - 1],
-                  ),
-                );
-              }
-            }}
-            className="h-6 min-w-[180px] flex-1 bg-transparent text-sm text-gray-200 outline-none placeholder:text-gray-600"
-          />
-
-          {/* Clear all */}
-          {(query || searchKeywords.length > 0) && (
-            <div className="ml-auto flex shrink-0 items-center">
-              <button
-                type="button"
-                onClick={() => {
-                  setQuery("");
-                  dispatch(clearSearchKeywords());
-                }}
-                aria-label="Clear search"
-                className="flex h-6 w-6 items-center justify-center rounded-md text-gray-600 transition-colors duration-150 hover:bg-white/[0.06] hover:text-gray-300"
-              >
-                <X className="h-3.5 w-3.5" strokeWidth={1.8} />
-              </button>
-            </div>
-          )}
-        </div>
-      </form>
-    </div>
+        {(query || searchKeywords.length > 0) && (
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            {query.trim() && (
+              <span className="hidden text-[11px] text-gray-600 sm:inline">
+                Press Enter to add filter
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setQuery("");
+                dispatch(clearSearchKeywords());
+              }}
+              aria-label="Clear search"
+              className="flex h-6 w-6 items-center justify-center rounded-md text-gray-500 transition-colors duration-150 hover:bg-white/[0.06] hover:text-gray-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-500/60"
+            >
+              <X className="h-3.5 w-3.5" strokeWidth={1.8} />
+            </button>
+          </div>
+        )}
+      </div>
+    </form>
   );
 }

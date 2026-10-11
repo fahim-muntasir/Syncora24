@@ -15,4 +15,7 @@ export const roomCreateSchema = Yup.object({
     .min(2, "At least 2 participants are required")
     .max(10, "Cannot have more than 10 participants")
     .required("Max participants is required"),
+  type: Yup.string()
+    .oneOf(["open", "debate"], "Invalid room type")
+    .required("Room type is required"),
 });

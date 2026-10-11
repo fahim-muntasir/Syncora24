@@ -6,6 +6,9 @@ import {
   Activity,
   Video,
   VideoOff,
+  MicOff,
+  MonitorUp,
+  MonitorOff,
 } from "lucide-react";
 import { roomSocketManager } from "@/libs/socket/index";
 import { useAppSelector } from "@/libs/hooks";
@@ -23,7 +26,12 @@ interface ActivityEvent {
     | "raised_hand"
     | "camera-started"
     | "camera-stopped"
-    | "camera-permission-changed";
+    | "microphone-started"
+    | "microphone-stopped"
+    | "screen-share-started"
+    | "screen-share-stopped"
+    | "camera-permission-changed"
+    | "position-changed";
   name: string;
   detail?: string;
   timestamp: Date;
@@ -38,7 +46,12 @@ function ActivityFeed({ events }: { events: ActivityEvent[] }) {
     raised_hand: { icon: Clock, color: "text-amber-400", bg: "bg-amber-500/10", label: "raised hand" },
     "camera-started": { icon: Video, color: "text-green-400", bg: "bg-green-500/10", label: "started their camera" },
     "camera-stopped": { icon: VideoOff, color: "text-gray-500", bg: "bg-white/[0.04]", label: "stopped their camera" },
+    "microphone-started": { icon: Mic, color: "text-green-400", bg: "bg-green-500/10", label: "turned on their microphone" },
+    "microphone-stopped": { icon: MicOff, color: "text-gray-500", bg: "bg-white/[0.04]", label: "turned off their microphone" },
+    "screen-share-started": { icon: MonitorUp, color: "text-green-400", bg: "bg-green-500/10", label: "started sharing their screen" },
+    "screen-share-stopped": { icon: MonitorOff, color: "text-gray-500", bg: "bg-white/[0.04]", label: "stopped sharing their screen" },
     "camera-permission-changed": { icon: Video, color: "text-amber-400", bg: "bg-amber-500/10", label: "changed camera permissions" },
+    "position-changed": { icon: Users, color: "text-violet-400", bg: "bg-violet-500/10", label: "changed position" },
   };
 
   if (events.length === 0) return (
@@ -228,13 +241,43 @@ export default function SidePanel({
   useEffect(() => {
     const unsub = roomSocketManager.on("room-activity", (payload: unknown) => {
       const activity = payload as RoomActivity;
-      if (
-        activity.type !== "camera-started" &&
-        activity.type !== "camera-stopped" &&
-        activity.type !== "camera-permission-changed"
-      ) {
+      if (activity.type === "member-joined") {
+        setActivityEvents((previous) => [
+          ...previous,
+          {
+            id: `joined-${activity.timestamp}-${activity.userId}`,
+            type: "joined",
+            name: activity.userName,
+            detail: activity.side
+              ? `joined for ${activity.side === "for" ? "For" : "Against"}`
+              : undefined,
+            timestamp: new Date(activity.timestamp),
+          },
+        ]);
         return;
       }
+
+      if (activity.type === "member-side-changed") {
+        setActivityEvents((previous) => [
+          ...previous,
+          {
+            id: `side-${activity.timestamp}-${activity.userId}`,
+            type: "position-changed",
+            name: activity.userName,
+            detail: `changed to ${activity.side === "for" ? "For" : "Against"}`,
+            timestamp: new Date(activity.timestamp),
+          },
+        ]);
+        return;
+      }
+
+      if (activity.type !== "camera-started" &&
+          activity.type !== "camera-stopped" &&
+          activity.type !== "microphone-started" &&
+          activity.type !== "microphone-stopped" &&
+          activity.type !== "screen-share-started" &&
+          activity.type !== "screen-share-stopped" &&
+          activity.type !== "camera-permission-changed") return;
 
       const name =
         activity.type === "camera-permission-changed"
@@ -250,7 +293,7 @@ export default function SidePanel({
       setActivityEvents((previous) => [
         ...previous,
         {
-          id: `camera-${activity.timestamp}`,
+          id: `${activity.type}-${activity.timestamp}-${activity.userId}`,
           type: activity.type,
           name,
           detail,

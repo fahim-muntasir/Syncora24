@@ -7,6 +7,7 @@ declare module "socket.io" {
     roomId?: string;
     userId?: string;
     userName?: string;
+    userSide?: "for" | "against";
     socketId?: string;
     isScreenSharing?: boolean;
     screenShareStreamId?: string;

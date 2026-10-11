@@ -25,6 +25,7 @@ export default function ControlsBar({
   isScreenSharing = false,
   onStartScreenShare,
   onStopScreenShare,
+  onLeaveRoom,
   raisedHandCount = 0,
 }: {
   currentUserIsHost?: boolean;
@@ -39,6 +40,7 @@ export default function ControlsBar({
   isScreenSharing?: boolean;
   onStartScreenShare?: () => Promise<void>;
   onStopScreenShare?: () => void;
+  onLeaveRoom: () => void;
 }) {
   const [isHandRaised, setIsHandRaised] = useState(false);
   const [hostPanelOpen, setHostPanelOpen] = useState(false);
@@ -49,10 +51,6 @@ export default function ControlsBar({
   const currentUser = useAppSelector((state) => state.auth.user);
   const { id } = useParams();
   const roomId = Array.isArray(id) ? (id[0] ?? "") : (id ?? "");
-
-  const handleLeaveRoom = async () => {
-    window.location.reload();
-  };
 
   const muteHandler = () => {
     toggleMute(roomId, currentUser?.id || "");
@@ -218,7 +216,7 @@ export default function ControlsBar({
             <div className="ml-2 pl-2 border-l border-white/[0.08]">
               <ControlButton
                 icon={PhoneOff}
-                onClick={handleLeaveRoom}
+                onClick={onLeaveRoom}
                 danger
                 label="Leave"
               />

@@ -1,5 +1,11 @@
-import React from 'react'
-import { BookOpenCheck } from "lucide-react";
+import React from "react";
+import Link from "next/link";
+import { ArrowLeft, BookOpenCheck } from "lucide-react";
+import AuthVisual from "@/components/Auth/AuthVisual";
+import { BackgroundPattern } from "@/components/background/BackgroundPattern";
+
+const focusRing =
+  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-500/60";
 
 export default function AuthLayout({
   children,
@@ -7,36 +13,53 @@ export default function AuthLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <div className="min-h-screen flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative bg-[#1C1C1C]">
-      {/* Background Image with Overlay */}
-      <div
-        className="absolute inset-0 z-0 bg-cover bg-center opacity-20"
-        style={{
-          backgroundImage:
-            'url("https://images.unsplash.com/photo-1432821596592-e2c18b78144f?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2340&q=80")',
-        }}
-      />
+    <div className="relative min-h-screen bg-[#111111] lg:grid lg:grid-cols-2">
+      <BackgroundPattern />
 
-      {/* Content */}
-      <div className="relative z-10 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex justify-center">
-          <div className="bg-green-500/10 p-4 rounded-full border border-green-500/20 mb-6">
-            <BookOpenCheck className="w-12 h-12 text-green-500" />
+      <div className="relative flex min-h-screen flex-col px-6 sm:px-10">
+        <header className="flex h-16 items-center justify-between">
+          <Link
+            href="/"
+            className={`group flex items-center gap-3 rounded-lg ${focusRing}`}
+          >
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.08] bg-[#161616] transition-colors duration-200 group-hover:border-white/[0.16] motion-reduce:transition-none">
+              <BookOpenCheck className="h-[18px] w-[18px] text-green-400" />
+            </span>
+            <span className="flex flex-col leading-none">
+              <span className="text-[15px] font-semibold tracking-tight text-white">
+                Syncora24
+              </span>
+              <span className="mt-1 text-[10px] font-medium uppercase tracking-wider text-gray-500">
+                Speak & Listen
+              </span>
+            </span>
+          </Link>
+
+          <Link
+            href="/"
+            className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-gray-400 transition-colors hover:text-white motion-reduce:transition-none ${focusRing}`}
+          >
+            <ArrowLeft size={14} />
+            Back to home
+          </Link>
+        </header>
+
+        <main className="flex flex-1 items-center justify-center py-10">
+          <div className="relative w-full max-w-md rounded-2xl border border-white/[0.08] bg-[#141414] p-6 sm:p-8">
+            <div
+              aria-hidden="true"
+              className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-green-500/40 to-transparent"
+            />
+            {children}
           </div>
-        </div>
-        <h2 className="text-center text-3xl font-extrabold text-white">
-          Welcome to Verbly
-        </h2>
-        <p className="mt-2 text-center text-sm text-gray-400">
-          Your journey to communication starts here
-        </p>
+        </main>
+
+        <footer className="py-6 text-xs text-gray-600">
+          © {new Date().getFullYear()} Syncora24
+        </footer>
       </div>
 
-      <div className="mt-8 sm:mx-auto mx-auto w-11/12 sm:w-full sm:max-w-md relative z-10">
-        <div className="bg-background border border-gray-900 rounded-lg relative">
-          {children}
-        </div>
-      </div>
+      <AuthVisual />
     </div>
-  )
+  );
 }

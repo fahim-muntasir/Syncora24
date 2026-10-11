@@ -452,38 +452,44 @@ export class PeerManager {
   }
 
   private attachRemoteAudio(socketId: string, stream: MediaStream): void {
-    const existing = this.remoteAudioElements.get(socketId);
-    if (existing) {
-      existing.pause();
-      existing.srcObject = null;
-      existing.parentNode?.removeChild(existing);
+    let audio = this.remoteAudioElements.get(socketId);
+    if (!audio) {
+      audio = document.createElement("audio");
+      audio.id = `remote-audio-${socketId}`;
+      audio.autoplay = true;
+      audio.muted = false;
+      audio.volume = 1;
+      audio.setAttribute("playsinline", "");
+      audio.style.cssText =
+        "position:absolute;width:0;height:0;opacity:0;pointer-events:none;";
+      document.body.appendChild(audio);
+      this.remoteAudioElements.set(socketId, audio);
     }
 
-    const audio = document.createElement("audio");
-    audio.id = `remote-audio-${socketId}`;
-    audio.autoplay = true;
-    audio.muted = false;
-    audio.volume = 1.0;
-    audio.setAttribute("playsinline", "");
+    if (audio.srcObject !== stream) {
+      audio.srcObject = stream;
+    }
 
-    audio.srcObject = stream;
-
-    audio.onloadedmetadata = () => {
-      audio.play().catch((err) => {
-        console.warn(`[PeerManager] Audio autoplay blocked for ${socketId}:`, err);
+    const playAudio = () => {
+      void audio!.play().catch((error: unknown) => {
+        console.warn(
+          `[PeerManager] Audio playback unavailable for ${socketId}:`,
+          error,
+        );
         const retry = () => {
-          audio.play().catch(console.error);
-          document.removeEventListener("click", retry);
+          void audio!.play().catch((retryError: unknown) => {
+            console.error(
+              `[PeerManager] Audio playback retry failed for ${socketId}:`,
+              retryError,
+            );
+          });
         };
         document.addEventListener("click", retry, { once: true });
       });
     };
 
-    audio.style.cssText = "position:absolute;width:0;height:0;opacity:0;pointer-events:none;";
-    document.body.appendChild(audio);
-    this.remoteAudioElements.set(socketId, audio);
-
-    console.log(`[PeerManager] Attached remote audio for ${socketId}`);
+    audio.onloadedmetadata = playAudio;
+    playAudio();
   }
 
   private stopVolumeMonitoring(socketId: string): void {

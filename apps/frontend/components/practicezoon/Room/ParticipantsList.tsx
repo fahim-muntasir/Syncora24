@@ -9,6 +9,7 @@ import Image from "next/image";
 import { generateIdenticonAvatar } from "@/utils/generateAvatar";
 import { useAudio } from "@/context/AudioContext";
 import type { ParticipantConnectionState } from "@/libs/features/room/roomSlice";
+import toast from "react-hot-toast";
 
 export default function ParticipantsList({
   room,
@@ -44,6 +45,31 @@ export default function ParticipantsList({
   const currentUserIsModerator = currentUser?.id ? moderatorIds.includes(currentUser.id) : false;
 
   const { toggleMute } = useAudio();
+  const debateCounts = {
+    for: room?.members.filter((member) => member.side === "for").length ?? 0,
+    against: room?.members.filter((member) => member.side === "against").length ?? 0,
+  };
+
+  const handleChangeSide = async (currentSide: "for" | "against") => {
+    if (!room?.id) return;
+    const nextSide = currentSide === "for" ? "against" : "for";
+    const nextLabel = nextSide === "for" ? "For" : "Against";
+    if (!window.confirm(`Change your debate position to ${nextLabel}?`)) return;
+
+    try {
+      await roomSocketManager.emitWithAck<{
+        success: boolean;
+        message?: string;
+        code?: string;
+      }>("change-debate-side", { roomId: room.id, side: nextSide });
+      toast.success(`Your position is now ${nextLabel}.`);
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : "Unable to change your debate position.";
+      toast.error(message);
+    }
+  };
 
   if (!room) {
     return (
@@ -52,6 +78,7 @@ export default function ParticipantsList({
       </div>
     );
   }
+  const isDebateRoom = room.type === "debate";
 
   const host = room.members.filter((m) => m.id === room.hostId);
 
@@ -141,6 +168,7 @@ export default function ParticipantsList({
       participantConnectionStates[member.id] ?? "connected";
     const connectionLabel = {
       connected: "Connected",
+      "connection-lost": "Connection lost",
       reconnecting: "Reconnecting...",
       disconnected: "Disconnected",
     }[connectionState];
@@ -197,7 +225,8 @@ export default function ParticipantsList({
               className={`text-[9px] ${
                 connectionState === "connected"
                   ? "text-green-400/70"
-                  : connectionState === "reconnecting"
+                  : connectionState === "connection-lost" ||
+                      connectionState === "reconnecting"
                     ? "text-amber-400"
                     : "text-red-400"
               }`}
@@ -218,6 +247,27 @@ export default function ParticipantsList({
               </span>
             )}
           </div>
+          {isDebateRoom && member.side && (
+            <span className={`mt-1 inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
+              member.side === "for"
+                ? "bg-emerald-500/10 text-emerald-300"
+                : "bg-rose-500/10 text-rose-300"
+            }`}>
+              {member.side === "for" ? "For" : "Against"}
+            </span>
+          )}
+          {isDebateRoom && isSelf && member.side && (
+            <button
+              type="button"
+              onClick={() => {
+                const side = member.side;
+                if (side) void handleChangeSide(side);
+              }}
+              className="ml-2 text-[10px] font-medium text-violet-300 hover:text-violet-200"
+            >
+              Switch to {member.side === "for" ? "Against" : "For"}
+            </button>
+          )}
         </div>
 
         {/* Right: actions + mic */}
@@ -278,6 +328,12 @@ export default function ParticipantsList({
 
   return (
     <div className="flex-1 overflow-y-auto px-2 py-3 space-y-4 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+      {isDebateRoom && (
+        <div className="mx-2 flex items-center justify-between rounded-lg border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-xs">
+          <span className="text-emerald-300">For · {debateCounts.for}</span>
+          <span className="text-rose-300">Against · {debateCounts.against}</span>
+        </div>
+      )}
 
       {/* Host */}
       {host.length > 0 && (

@@ -49,6 +49,7 @@ interface RoomParticipantProps {
   cameraDisabled: boolean;
   onToggleMemberCamera: (enabled: boolean) => void;
   compact?: boolean;
+  isDebateRoom?: boolean;
 }
 
 export default function RoomParticipant({
@@ -75,6 +76,7 @@ export default function RoomParticipant({
   cameraDisabled,
   onToggleMemberCamera,
   compact = false,
+  isDebateRoom = false,
 }: RoomParticipantProps) {
   const volume = useAppSelector((state) => state.room.volumeLevels[member.id] ?? 0);
   const connectionState = useAppSelector(
@@ -86,6 +88,11 @@ export default function RoomParticipant({
       label: "Connected",
       className: "text-green-400",
       dotClassName: "bg-green-400",
+    },
+    "connection-lost": {
+      label: "Connection lost",
+      className: "text-amber-400",
+      dotClassName: "bg-amber-400 animate-pulse",
     },
     reconnecting: {
       label: "Reconnecting...",
@@ -443,6 +450,15 @@ export default function RoomParticipant({
                     className="text-blue-400 flex-shrink-0"
                     strokeWidth={2}
                   />
+                )}
+                {isDebateRoom && member.side && (
+                  <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
+                    member.side === "for"
+                      ? "bg-emerald-500/15 text-emerald-300"
+                      : "bg-rose-500/15 text-rose-300"
+                  }`}>
+                    {member.side === "for" ? "For" : "Against"}
+                  </span>
                 )}
               </div>
               <span

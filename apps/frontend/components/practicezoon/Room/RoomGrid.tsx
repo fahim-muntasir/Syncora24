@@ -203,6 +203,7 @@ export default function RoomGrid({
               onSelectScreenShare={onSelectScreenShare}
               onSelectCamera={onSelectCamera}
               compact={compact}
+              isDebateRoom={room.type === "debate"}
               cameraEnabled={canUseCamera(room.members[0].id)}
               cameraDisabled={cameraDisabledMemberIds.includes(room.members[0].id)}
               onToggleMemberCamera={(enabled) =>
@@ -238,6 +239,7 @@ export default function RoomGrid({
                   onSelectScreenShare={onSelectScreenShare}
                   onSelectCamera={onSelectCamera}
                   compact={compact}
+                  isDebateRoom={room.type === "debate"}
                   cameraEnabled={canUseCamera(member.id)}
                   cameraDisabled={cameraDisabledMemberIds.includes(member.id)}
                   onToggleMemberCamera={(enabled) =>
@@ -275,6 +277,7 @@ export default function RoomGrid({
               onSelectScreenShare={onSelectScreenShare}
               onSelectCamera={onSelectCamera}
               compact={compact}
+              isDebateRoom={room.type === "debate"}
               cameraEnabled={canUseCamera(member.id)}
               cameraDisabled={cameraDisabledMemberIds.includes(member.id)}
               onToggleMemberCamera={(enabled) =>
