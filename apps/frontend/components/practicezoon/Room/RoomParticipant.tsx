@@ -89,6 +89,11 @@ export default function RoomParticipant({
       className: "text-green-400",
       dotClassName: "bg-green-400",
     },
+    "connection-lost": {
+      label: "Connection lost",
+      className: "text-amber-400",
+      dotClassName: "bg-amber-400 animate-pulse",
+    },
     reconnecting: {
       label: "Reconnecting...",
       className: "text-amber-400",

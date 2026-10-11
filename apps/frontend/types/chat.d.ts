@@ -142,6 +142,18 @@ export type RoomActivity =
       timestamp: number;
     }
   | {
+      type: "microphone-started" | "microphone-stopped";
+      userId: string;
+      userName: string;
+      timestamp: number;
+    }
+  | {
+      type: "screen-share-started" | "screen-share-stopped";
+      userId: string;
+      userName: string;
+      timestamp: number;
+    }
+  | {
       type: "camera-permission-changed";
       userId: string;
       userName: string;

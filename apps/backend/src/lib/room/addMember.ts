@@ -12,6 +12,7 @@ type RoomMember = {
 type AddMemberParams = {
   roomId: string;
   member: RoomMember;
+  reconnectOnly?: boolean;
 };
 
 type AddMemberResult = {
@@ -23,6 +24,7 @@ type AddMemberResult = {
 export const addMember = async ({
   roomId,
   member,
+  reconnectOnly = false,
 }: AddMemberParams): Promise<AddMemberResult> => {
   const roomKey = `room:${roomId}`;
 
@@ -86,6 +88,10 @@ export const addMember = async ({
         end
       end
 
+      if ARGV[3] == "1" then
+        return {0, "RECONNECT_WINDOW_EXPIRED"}
+      end
+
       -- Check room capacity
       if #members >= maxParticipants then
         return {0, "ROOM_FULL"}
@@ -109,6 +115,7 @@ export const addMember = async ({
       `room:${roomId}:kicked-members`,
       member.id,
       JSON.stringify(member),
+      reconnectOnly ? "1" : "0",
     )) as [number, string];
 
     const [success, code] = result;
@@ -130,6 +137,12 @@ export const addMember = async ({
           throw createHttpError(
             403,
             "You have been removed from this room and cannot join again.",
+          );
+
+        case "RECONNECT_WINDOW_EXPIRED":
+          throw createHttpError(
+            403,
+            "Your room reconnection period has expired. Join the room again to continue.",
           );
 
         case "INVALID_ROOM_CAPACITY":

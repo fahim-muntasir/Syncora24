@@ -7,6 +7,7 @@ import type { DebateSide } from "../../../schemas/roomSchema";
 type JoinRoomPayload = {
   roomId: string;
   side?: DebateSide;
+  reconnectOnly?: boolean;
 };
 
 type JoinRoomResponse = {
@@ -19,7 +20,7 @@ export const handleJoinRoom = async (
   io: Namespace,
   publicIo: Namespace,
   socket: Socket,
-  { roomId, side }: JoinRoomPayload,
+  { roomId, side, reconnectOnly }: JoinRoomPayload,
 ): Promise<JoinRoomResponse> => {
   try {
     const user = {
@@ -43,6 +44,7 @@ export const handleJoinRoom = async (
         name: user.name,
         side,
       },
+      reconnectOnly,
     });
     const room = await findSingleItem(roomId);
 
@@ -178,13 +180,16 @@ export const handleJoinRoom = async (
 
     const message =
       error instanceof Error ? error.message : "Failed to join room";
+    const code = message.includes("removed from this room")
+      ? "MEMBER_KICKED"
+      : message.includes("reconnection period has expired")
+        ? "RECONNECT_WINDOW_EXPIRED"
+        : undefined;
 
     return {
       success: false,
       message,
-      code: message.includes("removed from this room")
-        ? "MEMBER_KICKED"
-        : undefined,
+      code,
     };
   }
 };

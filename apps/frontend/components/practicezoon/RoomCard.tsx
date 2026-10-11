@@ -145,6 +145,7 @@ export const RoomCard = forwardRef<HTMLDivElement, RoomCardProps>(
 
                 {room.language}
               </span>
+
             </div>
 
             <h3 className="text-white text-sm font-medium leading-snug line-clamp-2">
@@ -370,6 +371,9 @@ export const RoomCard = forwardRef<HTMLDivElement, RoomCardProps>(
 
             <span>
               {isEnded ? 'Room ended' : 'Voice room'}
+            </span>
+            <span className="ml-1 rounded-full border border-white/[0.07] bg-white/[0.035] px-1.5 py-0.5 text-[9px] text-gray-400">
+              {room.type === 'debate' ? 'Debate' : 'Open Conversation'}
             </span>
           </div>
 

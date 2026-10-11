@@ -168,6 +168,7 @@ export default function ParticipantsList({
       participantConnectionStates[member.id] ?? "connected";
     const connectionLabel = {
       connected: "Connected",
+      "connection-lost": "Connection lost",
       reconnecting: "Reconnecting...",
       disconnected: "Disconnected",
     }[connectionState];
@@ -224,7 +225,8 @@ export default function ParticipantsList({
               className={`text-[9px] ${
                 connectionState === "connected"
                   ? "text-green-400/70"
-                  : connectionState === "reconnecting"
+                  : connectionState === "connection-lost" ||
+                      connectionState === "reconnecting"
                     ? "text-amber-400"
                     : "text-red-400"
               }`}

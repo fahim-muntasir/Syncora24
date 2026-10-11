@@ -25,6 +25,7 @@ export default function RoomLayout({
   stopVideo,
   startScreenShare,
   stopScreenShare,
+  onLeaveRoom,
   selectScreenShare,
   selectCamera,
   // isScreenSharing,
@@ -45,6 +46,7 @@ export default function RoomLayout({
   stopVideo: () => void;
   startScreenShare: () => Promise<void>;
   stopScreenShare: () => void;
+  onLeaveRoom: () => void;
   selectScreenShare: (userId: string) => void;
   selectCamera: (userId: string) => void;
   // isScreenSharing: boolean;
@@ -86,6 +88,7 @@ export default function RoomLayout({
           room={room}
           currentUserIsHost={currentUserIsHost}
           currentUserIsModerator={currentUserIsModerator}
+          // onLeaveRoom={onLeaveRoom}
         />
         {selectedScreenShareStream ? (
           <div className="flex-1 p-4 overflow-hidden">
@@ -239,6 +242,7 @@ export default function RoomLayout({
           isScreenSharing={Boolean(currentUserId && screenShareStreams[currentUserId])}
           onStartScreenShare={startScreenShare}
           onStopScreenShare={stopScreenShare}
+          onLeaveRoom={onLeaveRoom}
         />
       </div>
 

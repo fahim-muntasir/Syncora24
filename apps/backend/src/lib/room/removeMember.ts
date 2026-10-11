@@ -12,40 +12,36 @@ export const removeMember = async ({
 }: RemoveMemberParams) => {
   try {
     const roomKey = `room:${roomId}`;
+    const result = await redis.eval(
+      `
+      local roomJson = redis.call("JSON.GET", KEYS[1], "$")
+      if not roomJson or roomJson == "null" then
+        return -2
+      end
 
-    // Fetch full room data
-    const roomJson = await redis.call("JSON.GET", roomKey, "$");
-    if (!roomJson || roomJson === "null") {
+      local room = cjson.decode(roomJson)[1]
+      local members = room.members or {}
+      for index, member in ipairs(members) do
+        if member.id == ARGV[1] then
+          redis.call("JSON.DEL", KEYS[1], "$.members[" .. (index - 1) .. "]")
+          if #members == 1 then
+            redis.call("EXPIRE", KEYS[1], 3600)
+          end
+          return index - 1
+        end
+      end
+      return -1
+      `,
+      1,
+      roomKey,
+      memberId,
+    );
+
+    if (result === -2) {
       throw createHttpError(404, "Room not found");
     }
 
-    const [roomData] = JSON.parse(roomJson as string);
-
-    const currentMembers = roomData.members || [];
-
-    // Find index of member to remove
-    const index = currentMembers.findIndex((m: any) => m.id === memberId);
-
-    if (index === -1) {
-      return;
-      // throw createHttpError(404, "Member not found in the room");
-    }
-
-    // Remove the member using JSON.DEL at array index
-    await redis.call("JSON.DEL", roomKey, `$.members[${index}]`);
-
-    // Get updated members array
-    const updatedJson = await redis.call("JSON.GET", roomKey, "$.members");
-
-    if (updatedJson) {
-      const [membersArray] = JSON.parse(updatedJson as string);
-
-      if (!membersArray || membersArray.length === 0) {
-        await redis.expire(roomKey, 1 * 60 * 60); // 1 hour
-      }
-    }
-
-    return index;
+    return result === -1 ? undefined : result;
   } catch (error) {
     console.error("Error in lib/room/removeMember:", error);
     throw error;
