@@ -7,6 +7,7 @@ type ButtonProps = {
   type?: "button" | "submit";
   onHandler?: () => void;
   fullWidth?: boolean;
+  variant?: "primary" | "secondary";
 };
 
 const Button: React.FC<ButtonProps> = ({
@@ -15,6 +16,7 @@ const Button: React.FC<ButtonProps> = ({
   type = "button",
   onHandler,
   fullWidth = false,
+  variant = "primary",
 }) => {
   return (
     <button
@@ -22,9 +24,12 @@ const Button: React.FC<ButtonProps> = ({
       disabled={isDisabled}
       onClick={onHandler}
       className={cn(
-        "flex items-center justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary",
-        fullWidth && "w-full", // Add full width if fullWidth is true
-        isDisabled && "opacity-50 cursor-not-allowed"
+        "inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-500/60 motion-reduce:transition-none",
+        variant === "primary"
+          ? "bg-green-500 text-white enabled:hover:bg-green-400"
+          : "border border-white/[0.1] text-gray-200 enabled:hover:border-white/[0.2] enabled:hover:bg-white/[0.04]",
+        fullWidth && "w-full",
+        isDisabled && "cursor-not-allowed opacity-50",
       )}
     >
       {children}

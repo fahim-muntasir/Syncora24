@@ -1,12 +1,14 @@
 "use client";
 import React from "react";
-import { LogIn, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { Formik, Form, Field, ErrorMessage, FormikHelpers } from "formik";
 import { SignInFormValues } from "@/types/auth";
 import { signInSchema } from "@/schemas";
 import Button from "../ui/Button";
 import FieldContainer from "../ui/FieldContainer";
+import PasswordInput from "../ui/PasswordInput";
+import { inputClass, errorClass } from "../ui/formStyles";
 import { useSignInMutation } from "@/libs/features/auth/authApiSlice";
 import { toast } from "react-hot-toast";
 
@@ -32,10 +34,15 @@ export default function SignIn() {
   };
 
   return (
-    <div className="w-full p-8">
-      <h2 className="text-2xl font-bold text-center mb-6 text-white">
-        Welcome Back
-      </h2>
+    <div className="w-full">
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold tracking-tight text-white">
+          Welcome back
+        </h1>
+        <p className="mt-2 text-sm text-gray-500">
+          Sign in to join live practice rooms.
+        </p>
+      </div>
 
       <Formik
         initialValues={initialValues}
@@ -43,57 +50,45 @@ export default function SignIn() {
         onSubmit={doSubmit}
       >
         {({ isSubmitting }) => (
-          <Form className="space-y-4">
+          <Form className="space-y-5">
             <FieldContainer label="Email" name="email">
               <Field
+                id="email"
                 type="email"
                 name="email"
-                className="block w-full px-3 py-2 bg-gray-900 border border-gray-700 text-white rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary"
+                className={inputClass}
                 required
+                autoComplete="email"
                 placeholder="you@example.com"
               />
-              <ErrorMessage
-                name="email"
-                component="div"
-                className="text-sm text-danger-light"
-              />
+              <ErrorMessage name="email" component="p" className={errorClass} />
             </FieldContainer>
 
-            <FieldContainer
-              label="Password"
-              name="password"
-            >
-              <Field
-                type="password"
+            <FieldContainer label="Password" name="password">
+              <PasswordInput
                 name="password"
-                className="block w-full px-3 py-2 bg-gray-900 border border-gray-700 text-white rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary"
-                required
-                placeholder="••••••••"
+                placeholder="Your password"
+                autoComplete="current-password"
               />
-              <ErrorMessage
-                name="password"
-                component="div"
-                className="text-sm text-danger-light"
-              />
+              <ErrorMessage name="password" component="p" className={errorClass} />
             </FieldContainer>
 
             <Button type="submit" isDisabled={isSubmitting} fullWidth={true}>
-              {isSubmitting ? (
-                <Loader2 className="w-5 h-5 animate-spin mr-2" />
-              ) : (
-                <LogIn className="w-5 h-5 mr-2" />
+              {isSubmitting && (
+                <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
               )}
-              Sign In
+              {isSubmitting ? "Signing in…" : "Sign in"}
             </Button>
 
-            <div className="text-center mt-4">
+            <p className="border-t border-white/[0.06] pt-5 text-center text-sm text-gray-500">
+              Don&apos;t have an account?{" "}
               <Link
                 href="/auth/signup"
-                className="text-sm text-primary hover:text-primary-light"
+                className="rounded font-medium text-green-400 transition-colors hover:text-green-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-500/60 motion-reduce:transition-none"
               >
-                Don&apos;t have an account? Sign up
+                Sign up
               </Link>
-            </div>
+            </p>
           </Form>
         )}
       </Formik>

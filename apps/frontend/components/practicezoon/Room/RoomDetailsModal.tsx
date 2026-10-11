@@ -9,16 +9,19 @@ import {
   DoorOpen,
   ArrowLeft,
   Mic,
-  Hash,
   ShieldCheck,
-  Lock,
   Copy,
+  ThumbsUp,
+  ThumbsDown,
+  Check,
+  MessageCircle,
 } from "lucide-react";
 import { useGetSingleRoomQuery, roomApiSlice } from "@/libs/features/room/roomApiSlice";
 import { useAppSelector, useAppDispatch } from "@/libs/hooks";
 import { publicSocketManager } from "@/libs/socket/index";
 import { generateIdenticonAvatar } from "@/utils/generateAvatar";
 import { RoomType } from "@/types/room";
+import { BackgroundPattern } from "@/components/background/BackgroundPattern";
 
 const levelConfig: Record<string, { bg: string; text: string; border: string; dot: string }> = {
   Beginner: { bg: "bg-emerald-500/10", text: "text-emerald-400", border: "border-emerald-500/20", dot: "bg-emerald-400" },
@@ -235,111 +238,139 @@ export default function RoomDetailsModal({
 
   if (isOpen) return null;
 
+  const needsSide = isDebateRoom && !selectedSide;
+  const joinDisabled = isJoining || needsSide;
+
+  const sideOptions = [
+    {
+      value: "for" as const,
+      label: "For",
+      hint: "I agree with this topic",
+      Icon: ThumbsUp,
+      active: "border-emerald-400/60 bg-emerald-500/10 ring-1 ring-emerald-400/30",
+      iconActive: "bg-emerald-500/20 text-emerald-300",
+      labelActive: "text-emerald-300",
+    },
+    {
+      value: "against" as const,
+      label: "Against",
+      hint: "I disagree with this topic",
+      Icon: ThumbsDown,
+      active: "border-rose-400/60 bg-rose-500/10 ring-1 ring-rose-400/30",
+      iconActive: "bg-rose-500/20 text-rose-300",
+      labelActive: "text-rose-300",
+    },
+  ];
+
   return (
-    <Modal>
+    <Modal backdrop={<BackgroundPattern />}>
       <div className="p-6 sm:p-8 max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
 
-        <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-emerald-500/8 border border-emerald-500/15 mb-6">
-          <ShieldCheck size={15} className="text-emerald-400 flex-shrink-0" />
-          <span className="text-xs text-emerald-300/80 font-medium">
-            Actively moderated · Community guidelines enforced · Safe for all members
-          </span>
-          <span className="ml-auto text-[10px] text-emerald-500/60 hidden sm:block">
-            You can leave at any time
-          </span>
-        </div>
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6 mb-7">
           <div className="flex-1 min-w-0">
-
             <div className="flex items-center flex-wrap gap-2 mb-4">
               <span className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border font-medium ${level.bg} ${level.text} ${level.border}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${level.dot}`} />
                 {roomData?.level}
               </span>
-              <span className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-white/[0.05] border border-white/[0.08] text-gray-400">
+              <span className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-white/[0.05] border border-white/[0.08] text-gray-300">
                 <Globe2 size={12} /> {roomData?.language}
               </span>
-              <span className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-white/[0.05] border border-white/[0.08] text-gray-400">
-                <Users size={12} /> {roomData?.members.length}/{roomData?.maxParticipants}
-              </span>
-
-              <span className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.07] text-gray-600">
-                <Lock size={11} /> {isDebateRoom ? "Debate Room" : "Open Conversation"}
+              <span className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.07] text-gray-300">
+                {isDebateRoom ? <Users size={12} /> : <MessageCircle size={12} />}
+                {isDebateRoom ? "Debate Room" : "Open Conversation"}
               </span>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2 leading-tight">{roomData?.title}</h1>
-            <p className="text-gray-400 text-sm leading-relaxed max-w-lg">{roomData?.description}</p>
-
-            <div className="flex items-center gap-2 mt-3 text-xs text-gray-600">
-              <Hash size={11} />
-
-              <span className="font-mono">
-                {roomData?.id}
-              </span>
-
-              <button
-                type="button"
-                onClick={handleCopyRoomId}
-                disabled={!roomData?.id}
-                className="p-1 rounded-md text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Copy Room ID"
-                aria-label="Copy Room ID"
-              >
-                <Copy size={13} />
-              </button>
-            </div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2 leading-tight tracking-tight">
+              {roomData?.title}
+            </h1>
+            <p className="text-gray-400 text-sm leading-relaxed max-w-lg">
+              {roomData?.description}
+            </p>
           </div>
 
           <div className="flex flex-col gap-2 sm:items-end flex-shrink-0">
-            {isDebateRoom && (
-              <fieldset className="w-full sm:w-auto">
-                <legend className="mb-2 text-xs font-medium text-gray-300">
-                  Choose your position
-                </legend>
-                <div className="flex gap-2">
-                  {(["for", "against"] as const).map((side) => (
-                    <button
-                      key={side}
-                      type="button"
-                      aria-pressed={selectedSide === side}
-                      disabled={Boolean(currentMember?.side)}
-                      onClick={() => setSelectedSide(side)}
-                      className={`rounded-lg border px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                        selectedSide === side
-                          ? side === "for"
-                            ? "border-emerald-400 bg-emerald-500/15 text-emerald-300"
-                            : "border-rose-400 bg-rose-500/15 text-rose-300"
-                          : "border-white/10 bg-white/[0.03] text-gray-400 hover:text-white"
-                      }`}
-                    >
-                      {side === "for" ? "For" : "Against"}
-                    </button>
-                  ))}
-                </div>
-                {currentMember?.side && (
-                  <p className="mt-1 text-[10px] text-gray-500">
-                    Your saved position is selected.
-                  </p>
-                )}
-              </fieldset>
-            )}
             <button
-              className={`group flex items-center gap-2.5 px-6 py-3 rounded-xl font-semibold text-sm transition-all duration-200 active:scale-95 ${isJoining
-                ? "bg-green-500/50 text-white/70 cursor-not-allowed"
-                : "bg-green-500 hover:bg-green-400 text-white shadow-lg shadow-green-500/20 hover:shadow-green-500/30"
+              className={`group flex w-full sm:w-auto items-center justify-center gap-2.5 px-6 py-3 rounded-xl font-semibold text-sm transition-all duration-200 active:scale-95 ${joinDisabled
+                  ? "bg-green-500/40 text-white/60 cursor-not-allowed"
+                  : "bg-green-500 hover:bg-green-400 text-white shadow-lg shadow-green-500/20 hover:shadow-green-500/30"
                 }`}
-              disabled={isJoining || (isDebateRoom && !selectedSide)}
+              disabled={joinDisabled}
               onClick={joinRoomHandler}
             >
-              <DoorOpen size={18} className={isJoining ? "" : "group-hover:translate-x-0.5 transition-transform duration-200"} />
+              <DoorOpen
+                size={18}
+                className={isJoining ? "" : "group-hover:translate-x-0.5 transition-transform duration-200"}
+              />
               {isJoining ? "Joining…" : "Join Room"}
             </button>
-            {spotsLeft > 0 && !isJoining && (
-              <span className="text-xs text-gray-500">{spotsLeft} spot{spotsLeft !== 1 ? "s" : ""} remaining</span>
+            {needsSide && !isJoining ? (
+              <span className="text-xs text-amber-400/80">Choose a side to join</span>
+            ) : (
+              spotsLeft > 0 &&
+              !isJoining && (
+                <span className="text-xs text-gray-500">
+                  {spotsLeft} spot{spotsLeft !== 1 ? "s" : ""} remaining
+                </span>
+              )
             )}
           </div>
         </div>
+
+        {isDebateRoom && (
+          <fieldset className="mb-7 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 sm:p-5">
+            <legend className="sr-only">Choose your position</legend>
+
+            <div className="flex items-start gap-3 mb-4">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-green-400/80">
+                  Choose your position
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {sideOptions.map(({ value, label, hint, Icon, active, iconActive, labelActive }) => {
+                const isSelected = selectedSide === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={isSelected}
+                    disabled={Boolean(currentMember?.side)}
+                    onClick={() => setSelectedSide(value)}
+                    className={`group relative flex items-center gap-3 rounded-xl border p-4 text-left transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60 ${isSelected
+                        ? active
+                        : "border-white/10 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.05]"
+                      }`}
+                  >
+                    <span
+                      className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full transition-colors ${isSelected ? iconActive : "bg-white/[0.05] text-gray-400 group-hover:text-white"
+                        }`}
+                    >
+                      <Icon size={18} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className={`block text-sm font-semibold ${isSelected ? labelActive : "text-white"}`}>
+                        {label}
+                      </span>
+                      <span className="block text-xs text-gray-500 mt-0.5">{hint}</span>
+                    </span>
+                    <span
+                      className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border transition-all ${isSelected
+                          ? "border-transparent bg-white text-black"
+                          : "border-white/15 text-transparent"
+                        }`}
+                      aria-hidden="true"
+                    >
+                      <Check size={12} strokeWidth={3} />
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
+        )}
 
         <div className="border-t border-white/[0.06] pt-6 mb-6">
           <div className="flex items-center justify-between mb-4">
@@ -350,7 +381,8 @@ export default function RoomDetailsModal({
             {isRoomLoading || isFetching ? (
               <div className="h-6 w-16 rounded-full bg-white/[0.05] animate-pulse" />
             ) : (
-              <span className="text-xs text-gray-500 bg-white/[0.05] border border-white/[0.07] px-2.5 py-1 rounded-full">
+              <span className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-white/[0.05] border border-white/[0.08] text-gray-300">
+                <Users size={12} />
                 {roomData?.members?.length ?? 0} /{" "}
                 {roomData?.maxParticipants ?? 0}
               </span>
@@ -365,7 +397,6 @@ export default function RoomDetailsModal({
                   className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]"
                 >
                   <div className="w-11 h-11 rounded-full bg-white/[0.06] animate-pulse" />
-
                   <div className="flex-1 space-y-2">
                     <div className="h-3 w-24 rounded bg-white/[0.06] animate-pulse" />
                     <div className="h-2.5 w-16 rounded bg-white/[0.04] animate-pulse" />
@@ -386,7 +417,7 @@ export default function RoomDetailsModal({
                 return (
                   <div
                     key={member.id}
-                    className="group flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:border-white/[0.10] hover:bg-white/[0.05] transition-all duration-200"
+                    className="group flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:border-white/[0.12] hover:bg-white/[0.05] transition-all duration-200"
                   >
                     <div className="relative flex-shrink-0">
                       <div
@@ -396,7 +427,6 @@ export default function RoomDetailsModal({
                         className={`rounded-full overflow-hidden border-2 transition-all duration-300 flex items-center justify-center ${isHost ? "border-amber-500/40" : isModerator ? "border-blue-500/30" : "border-white/10"}`}
                         style={{ width: 44, height: 44 }}
                       />
-
                       <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#121212] bg-green-400" />
                     </div>
 
@@ -407,40 +437,28 @@ export default function RoomDetailsModal({
                         </span>
 
                         {isHost && (
-                          <Crown
-                            size={12}
-                            className="text-amber-400 flex-shrink-0"
-                          />
+                          <Crown size={12} className="text-amber-400 flex-shrink-0" />
                         )}
 
                         {isModerator && !isHost && (
-                          <ShieldCheck
-                            size={12}
-                            className="text-blue-400 flex-shrink-0"
-                          />
+                          <ShieldCheck size={12} className="text-blue-400 flex-shrink-0" />
                         )}
                       </div>
 
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        <Mic
-                          size={11}
-                          className="text-gray-500"
-                        />
-
+                        <Mic size={11} className="text-gray-500" />
                         <span className="text-xs text-gray-500">
-                          {isHost
-                            ? "Host"
-                            : isModerator
-                              ? "Moderator"
-                              : "Member"}
+                          {isHost ? "Host" : isModerator ? "Moderator" : "Member"}
                         </span>
                       </div>
+
                       {isDebateRoom && member.side && (
-                        <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                          member.side === "for"
-                            ? "bg-emerald-500/10 text-emerald-300"
-                            : "bg-rose-500/10 text-rose-300"
-                        }`}>
+                        <span
+                          className={`mt-1.5 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${member.side === "for"
+                              ? "bg-emerald-500/10 text-emerald-300"
+                              : "bg-rose-500/10 text-rose-300"
+                            }`}
+                        >
                           {member.side === "for" ? "For" : "Against"}
                         </span>
                       )}
@@ -459,15 +477,12 @@ export default function RoomDetailsModal({
               }).map((_, i) => (
                 <div
                   key={`empty-${i}`}
-                  className="flex items-center gap-3 p-3 rounded-xl border border-dashed border-white/[0.06]"
+                  className="flex items-center gap-3 p-3 rounded-xl border border-dashed border-white/[0.08]"
                 >
-                  <div className="w-11 h-11 rounded-full border border-dashed border-white/[0.08] flex items-center justify-center">
-                    <div className="w-2 h-2 rounded-full bg-white/[0.08]" />
+                  <div className="w-11 h-11 rounded-full border border-dashed border-white/[0.1] flex items-center justify-center">
+                    <div className="w-2 h-2 rounded-full bg-white/[0.1]" />
                   </div>
-
-                  <span className="text-xs text-gray-600">
-                    Open slot
-                  </span>
+                  <span className="text-xs text-gray-600">Open slot</span>
                 </div>
               ))}
             </div>
@@ -483,12 +498,27 @@ export default function RoomDetailsModal({
             Back to rooms
           </button>
 
-          <p className="text-xs text-gray-600 hidden sm:block">
-            By joining you agree to our{" "}
-            <span className="text-gray-500 underline underline-offset-2 cursor-pointer hover:text-white transition-colors">
-              community guidelines
-            </span>
-          </p>
+          <div>
+            <div className="flex items-center gap-1 mt-4 text-xs text-gray-600">
+              <button
+                type="button"
+                onClick={handleCopyRoomId}
+                disabled={!roomData?.id}
+                className="p-1 rounded-md text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Copy Room ID"
+                aria-label="Copy Room ID"
+              >
+                <Copy size={13} />
+              </button>
+              <span className="font-mono">{roomData?.id}</span>
+            </div>
+            <p className="text-xs text-gray-600 hidden sm:block">
+              By joining you agree to our{" "}
+              <span className="text-gray-500 underline underline-offset-2 cursor-pointer hover:text-white transition-colors">
+                community guidelines
+              </span>
+            </p>
+          </div>
         </div>
       </div>
     </Modal>

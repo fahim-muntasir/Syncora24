@@ -1,400 +1,228 @@
-import React, { forwardRef } from 'react';
-import { useRouter } from 'next/navigation';
-import { Users, Globe2, ArrowRight, Mic } from 'lucide-react';
-import { RoomType } from '@/types/room';
-import { generateIdenticonAvatar } from '@/utils/generateAvatar';
-import Image from 'next/image';
+import React, { memo } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { Users, Globe2, ArrowRight, Scale, MessageCircle } from "lucide-react";
+import { RoomType } from "@/types/room";
+import { generateIdenticonAvatar } from "@/utils/generateAvatar";
 
-type RoomCardProps = {
-  room: RoomType;
-};
+const LEVELS = ["Beginner", "Intermediate", "Advanced", "Native"];
+const BAR_HEIGHTS = [5, 7, 9, 11];
+const MAX_TILES = 5;
 
-export const RoomCard = forwardRef<HTMLDivElement, RoomCardProps>(
-  ({ room }, ref) => {
-    const router = useRouter();
+type Member = RoomType["members"][number];
 
-    const levelConfig: Record<
-      string,
-      {
-        bg: string;
-        text: string;
-        border: string;
-        dot: string;
-      }
-    > = {
-      Beginner: {
-        bg: 'bg-emerald-500/10',
-        text: 'text-emerald-400',
-        border: 'border-emerald-500/20',
-        dot: 'bg-emerald-400',
-      },
-      Intermediate: {
-        bg: 'bg-amber-500/10',
-        text: 'text-amber-400',
-        border: 'border-amber-500/20',
-        dot: 'bg-amber-400',
-      },
-      Advanced: {
-        bg: 'bg-orange-500/10',
-        text: 'text-orange-400',
-        border: 'border-orange-500/20',
-        dot: 'bg-orange-400',
-      },
-      Native: {
-        bg: 'bg-blue-500/10',
-        text: 'text-blue-400',
-        border: 'border-blue-500/20',
-        dot: 'bg-blue-400',
-      },
-    };
+function LevelMeter({ level }: { level: string }) {
+  const index = LEVELS.indexOf(level);
+  const filled = (index === -1 ? 0 : index) + 1;
 
-    const level =
-      levelConfig[room.level] ?? levelConfig.Beginner;
+  return (
+    <span className="flex items-center gap-2 text-gray-300">
+      <span className="flex items-end gap-[2px]" aria-hidden="true">
+        {BAR_HEIGHTS.map((height, i) => (
+          <span
+            key={i}
+            style={{ height }}
+            className={`w-[3px] rounded-[1px] ${
+              i < filled ? "bg-green-400" : "bg-white/[0.14]"
+            }`}
+          />
+        ))}
+      </span>
+      {level}
+    </span>
+  );
+}
 
-    const isUnlimited =
-      room.maxParticipants === 0 ||
-      room.maxParticipants === Infinity;
+function getTileSize(maxParticipants: number, isUnlimited: boolean) {
+  if (isUnlimited) return "w-12 h-12";
+  if (maxParticipants === 4) return "w-[72px] h-[72px]";
+  if (maxParticipants === 3) return "w-[90px] h-[90px]";
+  if (maxParticipants <= 2) return "w-[100px] h-[100px]";
+  return "w-12 h-12";
+}
 
-    const maxGridCols = isUnlimited
-      ? 5
-      : room.maxParticipants > 5
-        ? 5
-        : room.maxParticipants;
+function NameTooltip({ name }: { name: string }) {
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute -bottom-8 left-1/2 z-20 -translate-x-1/2 translate-y-1 whitespace-nowrap rounded-md border border-white/[0.08] bg-[#0c0c0c] px-2.5 py-1 text-[10px] text-gray-200 opacity-0 shadow-xl transition-all duration-150 group-hover/avatar:translate-y-0 group-hover/avatar:opacity-100"
+    >
+      {name}
+    </div>
+  );
+}
 
-    const gridColsMap: Record<number, string> = {
-      1: 'grid-cols-1',
-      2: 'grid-cols-2',
-      3: 'grid-cols-3',
-      4: 'grid-cols-4',
-      5: 'grid-cols-5',
-    };
-
-    const gridColsClass =
-      gridColsMap[maxGridCols] ?? 'grid-cols-1';
-
-
-    const getSizeClasses = () => {
-      if (room.maxParticipants < 5) {
-        if (room.maxParticipants === 4) {
-          return 'w-[72px] h-[72px]';
-        }
-
-        if (room.maxParticipants === 3) {
-          return 'w-[90px] h-[90px]';
-        }
-
-        if (room.maxParticipants <= 2) {
-          return 'w-[100px] h-[100px]';
-        }
-      }
-
-      return 'w-12 h-12';
-    };
-
-    const memberSize = getSizeClasses();
-
-    const isEnded = room.status === 'ended';
-
-    const isFull =
-      !isUnlimited &&
-      room.members.length >= room.maxParticipants;
-
-    const handleRoomClick = (roomId: string) => {
-      if (isEnded) return;
-
-      router.push(`/room/${roomId}`);
-    };
-
-    return (
+function MemberTile({ member, size }: { member: Member; size: string }) {
+  return (
+    <div className="group/avatar relative" role="img" aria-label={member.name}>
       <div
-        ref={ref}
-        className={`group relative h-[260px] bg-[#161616] border rounded-2xl p-5 transition-all duration-300 flex flex-col ${isEnded ? 'border-white/[0.04] opacity-60 cursor-not-allowed' : 'border-white/[0.07] cursor-pointer hover:border-white/[0.14] hover:-translate-y-0.5 hover:shadow-2xl hover:shadow-black/40'
-          }`}
-        onClick={() => handleRoomClick(room.id)}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !isEnded) {
-            handleRoomClick(room.id);
-          }
-        }}
+        className={`relative ${size} overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.035] shadow-[0_4px_16px_rgba(0,0,0,0.25)] transition-all duration-200 group-hover/avatar:-translate-y-0.5 group-hover/avatar:border-white/[0.18] group-hover/avatar:shadow-[0_8px_24px_rgba(0,0,0,0.35)] motion-reduce:transition-none`}
       >
-        <div
-          className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
-          style={{
-            background:
-              'radial-gradient(ellipse at top left, rgba(34,197,94,0.04) 0%, transparent 60%)',
-          }}
-        />
-
-        <div className="relative z-10 h-[58px] flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap mb-2.5">
-              <span
-                className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border font-medium ${level.bg} ${level.text} ${level.border}`}
-              >
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${level.dot}`}
-                />
-
-                {room.level}
-              </span>
-
-              <span className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-white/[0.05] border border-white/[0.08] text-gray-400">
-                <Globe2 size={11} />
-
-                {room.language}
-              </span>
-
-            </div>
-
-            <h3 className="text-white text-sm font-medium leading-snug line-clamp-2">
-              {room.title}
-            </h3>
-          </div>
-
-          <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-            <div className="flex items-center gap-1.5 text-xs text-gray-500">
-              <Users size={12} />
-
-              <span>
-                {room.members.length}/
-                {isUnlimited ? '∞' : room.maxParticipants}
-              </span>
-            </div>
-
-            {isEnded ? (
-              <span className="text-[10px] text-gray-500 font-medium bg-white/[0.04] border border-white/[0.06] px-2 py-0.5 rounded-full">
-                Ended
-              </span>
-            ) : (
-              <>
-                {isFull && (
-                  <span className="text-[10px] text-orange-400 font-medium bg-orange-500/10 border border-orange-500/20 px-2 py-0.5 rounded-full">
-                    Full
-                  </span>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-
-        <div className="relative z-10 h-[128px] w-full flex items-center justify-center">
+        {member.avatar ? (
+          <Image
+            src={member.avatar}
+            alt=""
+            fill
+            sizes="100px"
+            className="object-cover"
+          />
+        ) : (
           <div
-            className={`grid w-max ${gridColsClass} gap-2.5`}
-          >
-            {isUnlimited ? (
-              room.members.map((member) => {
-                const avatarSvg =
-                  member.avatar ||
-                  generateIdenticonAvatar(
-                    member.name,
-                    150
-                  );
+            dangerouslySetInnerHTML={{
+              __html: generateIdenticonAvatar(member.name, 150),
+            }}
+            className="absolute inset-0 flex items-center justify-center overflow-hidden"
+          />
+        )}
+      </div>
+      <NameTooltip name={member.name} />
+    </div>
+  );
+}
 
-                return (
-                  <div
-                    key={member.id}
-                    className="relative group/avatar"
-                  >
-                    <div
-                      className={`relative ${memberSize} rounded-xl overflow-hidden bg-white/[0.035] border
-                        border-white/[0.08] shadow-[0_4px_16px_rgba(0,0,0,0.25)] transition-all duration-200 group-hover/avatar:-translate-y-0.5   group-hover/avatar:border-white/[0.18] group-hover/avatar:shadow-[0_8px_24px_rgba(0,0,0,0.35)]
-                      `}
-                    >
-                      {member.avatar ? (
-                        <Image
-                          src={member.avatar}
-                          alt={member.name}
-                          fill
-                          sizes="100px"
-                          className="object-cover"
-                        />
-                      ) : (
-                        <div
-                          dangerouslySetInnerHTML={{
-                            __html: avatarSvg,
-                          }}
-                          className="absolute inset-0 flex items-center justify-center overflow-hidden"
-                        />
-                      )}
+function EmptySlot({ size }: { size: string }) {
+  return (
+    <div
+      className={`${size} flex items-center justify-center rounded-xl border border-dashed border-white/[0.07] bg-white/[0.015] transition-colors duration-200 group-hover:border-white/[0.12]`}
+      aria-hidden="true"
+    >
+      <div className="h-2 w-2 rounded-full bg-white/[0.08]" />
+    </div>
+  );
+}
 
-                      {/* Bottom gradient */}
-                      <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/40 to-transparent pointer-events-none" />
+export const RoomCard = memo(function RoomCard({ room }: { room: RoomType }) {
+  const isEnded = room.status === "ended";
+  const isDebate = room.type === "debate";
+  const isUnlimited =
+    room.maxParticipants === 0 || room.maxParticipants === Infinity;
+  const isFull = !isUnlimited && room.members.length >= room.maxParticipants;
 
-                      {/* Status indicator */}
-                      <div className="absolute right-1.5 bottom-1.5">
-                        <div className="relative flex items-center justify-center w-3.5 h-3.5 rounded-full bg-[#161616]/90 border border-white/10">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                        </div>
-                      </div>
-                    </div>
+  const size = getTileSize(room.maxParticipants, isUnlimited);
 
-                    <div
-                      className="
-                        absolute
-                        -bottom-8
-                        left-1/2
-                        -translate-x-1/2
-                        px-2.5
-                        py-1
-                        bg-[#0c0c0c]
-                        border
-                        border-white/[0.08]
-                        text-[10px]
-                        text-gray-200
-                        rounded-md
-                        shadow-xl
-                        opacity-0
-                        translate-y-1
-                        group-hover/avatar:opacity-100
-                        group-hover/avatar:translate-y-0
-                        transition-all
-                        duration-150
-                        whitespace-nowrap
-                        z-20
-                        pointer-events-none
-                      "
-                    >
-                      {member.name}
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              Array.from({
-                length: room.maxParticipants,
-              }).map((_, index) => {
-                const member = room.members[index];
+  const totalSlots = isUnlimited ? room.members.length : room.maxParticipants;
+  const hasOverflow = totalSlots > MAX_TILES;
+  const visibleCount = hasOverflow ? MAX_TILES - 1 : totalSlots;
+  const hiddenCount = totalSlots - visibleCount;
 
-                const avatarSvg = member
-                  ? member.avatar ||
-                  generateIdenticonAvatar(
-                    member.name,
-                    150
-                  )
-                  : null;
+  const base =
+    "group relative flex h-[272px] flex-col rounded-2xl border bg-[#161616] p-5 transition-all duration-300 motion-reduce:transition-none";
 
-                return (
-                  <div
-                    key={index}
-                    className="relative group/avatar"
-                  >
-                    {member ? (
-                      <>
-                        {/* Member Tile */}
-                        <div
-                          className={`
-                            relative
-                            ${memberSize}
-                            rounded-xl
-                            overflow-hidden
-                            bg-white/[0.035]
-                            border
-                            border-white/[0.08]
-                            shadow-[0_4px_16px_rgba(0,0,0,0.25)]
-                            transition-all
-                            duration-200
-                            group-hover/avatar:-translate-y-0.5
-                            group-hover/avatar:border-white/[0.18]
-                            group-hover/avatar:shadow-[0_8px_24px_rgba(0,0,0,0.35)]
-                          `}
-                        >
-                          {member.avatar ? (
-                            <Image
-                              src={member.avatar}
-                              alt={member.name}
-                              fill
-                              sizes="100px"
-                              className="object-cover"
-                            />
-                          ) : (
-                            <div
-                              dangerouslySetInnerHTML={{
-                                __html: avatarSvg!,
-                              }}
-                              className="absolute inset-0 flex items-center justify-center overflow-hidden"
-                            />
-                          )}
+  const content = (
+    <>
+      {!isEnded && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-green-500/40 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+        />
+      )}
 
-                        </div>
-
-                        {/* Name tooltip */}
-                        <div
-                          className="
-                            absolute
-                            -bottom-8
-                            left-1/2
-                            -translate-x-1/2
-                            px-2.5
-                            py-1
-                            bg-[#0c0c0c]
-                            border
-                            border-white/[0.08]
-                            text-[10px]
-                            text-gray-200
-                            rounded-md
-                            shadow-xl
-                            opacity-0
-                            translate-y-1
-                            group-hover/avatar:opacity-100
-                            group-hover/avatar:translate-y-0
-                            transition-all
-                            duration-150
-                            whitespace-nowrap
-                            z-20
-                            pointer-events-none
-                          "
-                        >
-                          {member.name}
-                        </div>
-                      </>
-                    ) : (
-                      /* Empty Slot */
-                      <div
-                        className={`${memberSize} rounded-xl border border-dashed border-white/[0.07]  bg-white/[0.015] flex items-center justify-center transition-all duration-200  group-hover:border-white/[0.1]
-                        `}
-                      >
-                        <div className="w-2 h-2 rounded-full bg-white/[0.08]" />
-                      </div>
-                    )}
-                  </div>
-                );
-              })
-            )}
+      {/* Header — fixed height so avatar rows align across every card in a row */}
+      <div className="flex h-[66px] items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2.5 text-xs text-gray-400">
+            <LevelMeter level={room.level} />
+            <span aria-hidden="true" className="h-3 w-px shrink-0 bg-white/10" />
+            <span className="flex min-w-0 items-center gap-1.5">
+              <Globe2 size={12} className="shrink-0 text-gray-500" />
+              <span className="truncate">{room.language}</span>
+            </span>
           </div>
+
+          <h3 className="mt-2.5 line-clamp-2 text-sm font-medium leading-snug text-white">
+            {room.title}
+          </h3>
         </div>
 
-        <div className="relative z-10 mt-auto flex items-center justify-between pt-3 border-t border-white/[0.06]">
-          <div className="flex items-center gap-1.5 text-gray-600 text-xs">
-            <Mic size={11} />
-
-            <span>
-              {isEnded ? 'Room ended' : 'Voice room'}
-            </span>
-            <span className="ml-1 rounded-full border border-white/[0.07] bg-white/[0.035] px-1.5 py-0.5 text-[9px] text-gray-400">
-              {room.type === 'debate' ? 'Debate' : 'Open Conversation'}
-            </span>
-          </div>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <span
+            className="flex items-center gap-1.5 text-xs tabular-nums text-gray-400"
+            aria-label={`${room.members.length} of ${
+              isUnlimited ? "unlimited" : room.maxParticipants
+            } participants`}
+          >
+            <Users size={12} className="text-gray-500" />
+            {room.members.length}/{isUnlimited ? "∞" : room.maxParticipants}
+          </span>
 
           {isEnded ? (
-            <div className="flex items-center gap-1.5 text-gray-600 text-xs font-medium">
-              Room unavailable
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 text-green-400 text-xs font-medium group-hover:gap-2.5 transition-all duration-200">
-              Join room
-
-              <ArrowRight
-                size={13}
-                className="group-hover:translate-x-0.5 transition-transform"
-              />
-            </div>
-          )}
+            <span className="text-[11px] font-medium uppercase tracking-wider text-gray-500">
+              Ended
+            </span>
+          ) : isFull ? (
+            <span className="text-[11px] font-medium uppercase tracking-wider text-gray-300">
+              Full
+            </span>
+          ) : null}
         </div>
+      </div>
+
+      {/* Participants */}
+      <div className="flex flex-1 items-center justify-center">
+        {totalSlots === 0 ? (
+          <p className="text-xs text-gray-600">No one here yet. Be the first.</p>
+        ) : (
+          <div className="flex items-center justify-center gap-2.5">
+            {Array.from({ length: visibleCount }).map((_, index) => {
+              const member = room.members[index];
+              return member ? (
+                <MemberTile key={member.id} member={member} size={size} />
+              ) : (
+                <EmptySlot key={`empty-${index}`} size={size} />
+              );
+            })}
+
+            {hasOverflow && (
+              <div
+                className={`${size} flex items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.035] text-xs font-medium tabular-nums text-gray-400`}
+                aria-label={`${hiddenCount} more`}
+              >
+                +{hiddenCount}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between border-t border-white/[0.06] pt-3 text-xs">
+        <span className="flex items-center gap-1.5 text-gray-500">
+          {isDebate ? <Scale size={12} /> : <MessageCircle size={12} />}
+          {isDebate ? "Debate" : "Open conversation"}
+        </span>
+
+        {isEnded ? (
+          <span className="font-medium text-gray-600">Room unavailable</span>
+        ) : (
+          <span className="flex items-center gap-1.5 font-medium text-green-400 transition-all duration-200 group-hover:gap-2.5">
+            {isFull ? "View room" : "Join room"}
+            <ArrowRight
+              size={13}
+              className="transition-transform group-hover:translate-x-0.5"
+            />
+          </span>
+        )}
+      </div>
+    </>
+  );
+
+  if (isEnded) {
+    return (
+      <div
+        aria-disabled="true"
+        className={`${base} cursor-not-allowed border-white/[0.04] opacity-60`}
+      >
+        {content}
       </div>
     );
   }
-);
 
-RoomCard.displayName = 'RoomCard';
+  return (
+    <Link
+      href={`/room/${room.id}`}
+      className={`${base} border-white/[0.07] hover:-translate-y-0.5 hover:border-white/[0.14] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-500/60 motion-reduce:hover:translate-y-0`}
+    >
+      {content}
+    </Link>
+  );
+});

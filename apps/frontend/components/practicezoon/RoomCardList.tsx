@@ -1,6 +1,9 @@
 "use client";
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, RotateCw, SearchX, Loader } from "lucide-react";
 import { RoomCard } from "./RoomCard";
+import RoomCardSkeleton from "../common/Room/RoomCardSkeleton";
+import Bone from "../common/Room/Bone";
 import { RoomType } from "@/types/room";
 import { useGetRoomsQuery } from "@/libs/features/room/roomApiSlice";
 import { publicSocketManager } from "@/libs/socket/index";
@@ -8,46 +11,32 @@ import { isRoomsResponse } from "@/utils/typeGuardsForRoom";
 import EmptyRoomCard from "../common/EmptyRoomCard";
 import { useAppSelector } from "@/libs/hooks";
 
-function RoomCardSkeleton() {
-  return (
-    <div className="bg-[#161616] border border-white/[0.07] rounded-2xl p-5 flex flex-col gap-5 animate-pulse">
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <div className="flex gap-2 mb-3">
-            <div className="h-6 w-20 rounded-full bg-white/[0.06]" />
-            <div className="h-6 w-16 rounded-full bg-white/[0.06]" />
-          </div>
-          <div className="h-4 w-3/4 rounded bg-white/[0.06]" />
-          <div className="h-4 w-1/2 rounded bg-white/[0.04] mt-2" />
-        </div>
-        <div className="h-5 w-12 rounded bg-white/[0.06]" />
-      </div>
-      <div className="flex gap-2.5 justify-center">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="w-12 h-12 rounded-full bg-white/[0.06]" />
-        ))}
-      </div>
-      <div className="flex justify-between pt-3 border-t border-white/[0.06]">
-        <div className="h-3 w-16 rounded bg-white/[0.04]" />
-        <div className="h-3 w-16 rounded bg-white/[0.06]" />
-      </div>
-    </div>
-  );
-}
 
 export default function RoomCardList() {
-  const { data: initialRooms, isLoading } = useGetRoomsQuery(undefined, {
+  const {
+    data: initialRooms,
+    isFetching,
+    isError,
+    refetch,
+  } = useGetRoomsQuery(undefined, {
     refetchOnMountOrArgChange: true,
   });
-  const [rooms, setRooms] = useState<RoomType[]>([]);
-  const [mounted, setMounted] = useState(false);
-  const searchKeywords = useAppSelector(
-    (state) => state.filter.searchKeywords,
+
+  const [rooms, setRooms] = useState<RoomType[] | null>(() =>
+    initialRooms && isRoomsResponse(initialRooms) ? initialRooms.data : null,
   );
+  const [revealed, setRevealed] = useState(false);
+  const searchKeywords = useAppSelector((state) => state.filter.searchKeywords);
+
+  const isInvalidResponse =
+    initialRooms !== undefined && !isRoomsResponse(initialRooms);
+
   const filteredRooms = useMemo(() => {
-    const keywords = searchKeywords.map((keyword) =>
-      keyword.toLowerCase(),
-    );
+    if (!rooms) return [];
+
+    const keywords = searchKeywords
+      .map((keyword) => keyword.trim().toLowerCase())
+      .filter(Boolean);
 
     if (keywords.length === 0) return rooms;
 
@@ -55,12 +44,10 @@ export default function RoomCardList() {
       const searchableValues = [
         room.id,
         room.title,
-        // room.description,
-        // room.hostId,
         room.language,
         room.level,
         ...room.members.flatMap((member) => [member.id, member.name]),
-      ].map((value) => value.toLowerCase());
+      ].map((value) => String(value ?? "").toLowerCase());
 
       return keywords.some((keyword) =>
         searchableValues.some((value) => value.includes(keyword)),
@@ -69,69 +56,89 @@ export default function RoomCardList() {
   }, [rooms, searchKeywords]);
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
     if (initialRooms && isRoomsResponse(initialRooms)) {
       setRooms(initialRooms.data);
     }
   }, [initialRooms]);
 
+  const hasRooms = rooms !== null;
+  useEffect(() => {
+    if (!hasRooms) return;
+    const frame = requestAnimationFrame(() => setRevealed(true));
+    return () => cancelAnimationFrame(frame);
+  }, [hasRooms]);
+
   useEffect(() => {
     const unsubscribe = publicSocketManager.on(
       "public-room-ended",
       (payload: unknown) => {
-        const { roomId } = payload as {
-          roomId: string;
-        };
+        const { roomId } = payload as { roomId: string };
 
-        setRooms((prevRooms) =>
-          prevRooms.map((room) =>
-            room.id === roomId
-              ? { ...room, status: "ended" }
-              : room
-          )
+        setRooms((prev) =>
+          prev
+            ? prev.map((room) =>
+                room.id === roomId ? { ...room, status: "ended" } : room,
+              )
+            : prev,
         );
-      }
+      },
     );
 
     return unsubscribe;
   }, []);
 
   useEffect(() => {
-    const unsubCreated = publicSocketManager.on("public-room-created", (payload) => {
-      const room = payload as RoomType;
-      setRooms((prev) => {
-        if (prev.some((r) => r.id === room.id)) return prev;
-        return [room, ...prev];
-      });
-    });
+    const unsubCreated = publicSocketManager.on(
+      "public-room-created",
+      (payload) => {
+        const room = payload as RoomType;
+        setRooms((prev) => {
+          if (!prev) return prev;
+          if (prev.some((r) => r.id === room.id)) return prev;
+          return [room, ...prev];
+        });
+      },
+    );
 
-    const unsubJoined = publicSocketManager.on("public-room-member-joined", (payload: unknown) => {
-      const data = payload as { roomId: string; newMember: RoomType["members"][number] };
-      setRooms((prev) =>
-        prev.map((room) => {
-          if (room.id !== data.roomId) return room;
-          const exists = room.members.some((m) => m.id === data.newMember.id);
-          if (exists) return room;
-          return { ...room, members: [...room.members, data.newMember] };
-        })
-      );
-    });
+    const unsubJoined = publicSocketManager.on(
+      "public-room-member-joined",
+      (payload: unknown) => {
+        const data = payload as {
+          roomId: string;
+          newMember: RoomType["members"][number];
+        };
+        setRooms((prev) =>
+          prev
+            ? prev.map((room) => {
+                if (room.id !== data.roomId) return room;
+                const exists = room.members.some(
+                  (m) => m.id === data.newMember.id,
+                );
+                if (exists) return room;
+                return { ...room, members: [...room.members, data.newMember] };
+              })
+            : prev,
+        );
+      },
+    );
 
-    const unsubLeft = publicSocketManager.on("public-room-member-removed", (payload: unknown) => {
-      const data = payload as { roomId: string; memberId: string };
-      setRooms((prev) =>
-        prev.map((room) => {
-          if (room.id !== data.roomId) return room;
-          return {
-            ...room,
-            members: room.members.filter((m) => m.id !== data.memberId),
-          };
-        })
-      );
-    });
+    const unsubLeft = publicSocketManager.on(
+      "public-room-member-removed",
+      (payload: unknown) => {
+        const data = payload as { roomId: string; memberId: string };
+        setRooms((prev) =>
+          prev
+            ? prev.map((room) => {
+                if (room.id !== data.roomId) return room;
+                return {
+                  ...room,
+                  members: room.members.filter((m) => m.id !== data.memberId),
+                };
+              })
+            : prev,
+        );
+      },
+    );
 
     return () => {
       unsubCreated();
@@ -140,18 +147,49 @@ export default function RoomCardList() {
     };
   }, []);
 
-  if (isLoading) {
-    return (
-      <div className="mt-8">
-        {/* Section header skeleton */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div className="h-5 w-32 rounded bg-white/[0.06] animate-pulse" />
-            <div className="h-5 w-8 rounded-full bg-white/[0.04] animate-pulse" />
-          </div>
+  if (rooms === null || isFetching) {
+    if (isError || isInvalidResponse) {
+      return (
+        <div
+          role="alert"
+          className="mt-8 flex min-h-[240px] flex-col items-center justify-center rounded-2xl border border-white/[0.06] bg-[#161616] px-6 text-center md:mt-10"
+        >
+          <AlertTriangle size={20} className="text-gray-500" />
+          <h2 className="mt-3 text-base font-semibold text-white">
+            Couldn’t load rooms
+          </h2>
+          <p className="mt-1.5 max-w-sm text-sm text-gray-500">
+            Something went wrong while fetching rooms. Check your connection and
+            try again.
+          </p>
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            disabled={isFetching}
+            className="mt-5 inline-flex items-center gap-2 rounded-lg border border-white/[0.1] px-4 py-2 text-sm font-medium text-gray-200 transition-colors hover:border-white/[0.2] hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RotateCw
+              size={14}
+              className={isFetching ? "animate-spin motion-reduce:animate-none" : ""}
+            />
+            {isFetching ? "Retrying…" : "Try again"}
+          </button>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
+      );
+    }
+
+    return (
+      <div className="mt-8 md:mt-10" role="status" aria-live="polite">
+        <span className="sr-only">Loading rooms…</span>
+        <div className="mb-5 flex items-center justify-between gap-3" aria-hidden="true">
+          <Bone className="h-4 w-28" />
+          <Bone className="h-4 w-14 bg-white/[0.04]" />
+        </div>
+        <div
+          className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
+          aria-hidden="true"
+        >
+          {Array.from({ length: rooms?.length || 6 }).map((_, i) => (
             <RoomCardSkeleton key={i} />
           ))}
         </div>
@@ -159,42 +197,43 @@ export default function RoomCardList() {
     );
   }
 
-  if (rooms.length === 0) return <EmptyRoomCard />;
+  if (rooms.length === 0 && !isFetching) return <EmptyRoomCard />;
 
   if (filteredRooms.length === 0) {
     return (
-      <div className="mt-8 flex min-h-[240px] flex-col items-center justify-center rounded-2xl border border-white/[0.06] bg-[#161616] px-6 text-center">
-        <h2 className="text-white font-semibold text-base">No matching rooms</h2>
-        <p className="mt-2 text-sm text-gray-500">
+      <div className="mt-8 flex min-h-[240px] flex-col items-center justify-center rounded-2xl border border-white/[0.06] bg-[#161616] px-6 text-center md:mt-10">
+        <SearchX size={20} className="text-gray-500" />
+        <h2 className="mt-3 text-base font-semibold text-white">
+          No matching rooms
+        </h2>
+        <p className="mt-1.5 text-sm text-gray-500">
           Try another keyword or remove a search filter.
         </p>
       </div>
     );
   }
 
-  console.log("Filtered Rooms:", filteredRooms); // Debugging line
-
   return (
-    <div className="mt-8">
-      {/* Section header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <h2 className="text-white font-semibold text-base">Available Rooms</h2>
-          <span className="text-xs text-gray-500 bg-white/[0.05] border border-white/[0.07] px-2.5 py-1 rounded-full">
-            {filteredRooms.length} {filteredRooms.length === 1 ? 'room' : 'rooms'}
-          </span>
-        </div>
+    <div className="mt-8 md:mt-10">
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <h2 className="text-sm font-medium text-white">Available rooms</h2>
+
+        <span className="flex items-center gap-2 text-sm tabular-nums text-gray-500">
+          {isFetching && (
+            <Loader size={14} className="animate-spin motion-reduce:animate-none" />
+          )}
+          {filteredRooms.length} {filteredRooms.length === 1 ? "room" : "rooms"}
+        </span>
       </div>
 
-      {/* Card grid with staggered entrance */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {filteredRooms.map((room, index) => (
           <div
             key={room.id}
-            className="transition-all duration-500"
+            className="transition-all duration-500 motion-reduce:transition-none"
             style={{
-              opacity: mounted ? 1 : 0,
-              transform: mounted ? 'translateY(0)' : 'translateY(16px)',
+              opacity: revealed ? 1 : 0,
+              transform: revealed ? "translateY(0)" : "translateY(16px)",
               transitionDelay: `${Math.min(index * 60, 400)}ms`,
             }}
           >
