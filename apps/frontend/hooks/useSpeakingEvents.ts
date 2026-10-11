@@ -11,12 +11,15 @@ export function useSpeakingEvents(roomId: string) {
 
   useEffect(() => {
     const handleSpeaking = ({
+      roomId: eventRoomId,
       userId,
       speaking,
     }: {
+      roomId: string;
       userId: string;
       speaking: boolean;
     }) => {
+      if (eventRoomId !== roomId || !userId) return;
       console.log(
         `User ${userId} is ${speaking ? "speaking" : "not speaking"}`,
       );
@@ -33,9 +36,8 @@ export function useSpeakingEvents(roomId: string) {
         userId: string;
         speaking: boolean;
       };
-      if (data.roomId === roomId) {
-        handleSpeaking(data);
-      }
+      if (typeof data.speaking !== "boolean") return;
+      handleSpeaking(data);
     });
 
     return () => {

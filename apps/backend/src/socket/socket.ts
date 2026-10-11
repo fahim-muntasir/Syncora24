@@ -758,6 +758,11 @@ export const initializeSocket = (server: HttpServer) => {
             return;
           }
 
+          roomIo?.to(roomId).emit("user-speaking", {
+            roomId,
+            userId: memberId,
+            speaking: false,
+          });
           roomIo?.to(roomId).emit("participant-connection-state", {
             roomId,
             userId: memberId,

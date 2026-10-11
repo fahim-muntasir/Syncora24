@@ -51,7 +51,9 @@ const roomSlice = createSlice({
       state.isMuted = action.payload;
     },
     setSpeakingUser: (state, action: PayloadAction<string>) => {
-      state.speakingUsers = [...state.speakingUsers, action.payload];
+      if (!state.speakingUsers.includes(action.payload)) {
+        state.speakingUsers.push(action.payload);
+      }
     },
     removeSpeakingUser: (state, action: PayloadAction<string>) => {
       state.speakingUsers = state.speakingUsers.filter(

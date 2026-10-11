@@ -14,20 +14,15 @@ declare global {
 }
 
 const SPEAKING_CONFIG = {
-  VOICE_BAND_START: 2,
-  VOICE_BAND_END: 30,
-  SPEAKING_THRESHOLD: 12,
-  SPEAKING_STOP_DELAY: 800,
+  SPEAKING_START_THRESHOLD: 0.018,
+  SPEAKING_STOP_THRESHOLD: 0.012,
+  SPEAKING_STOP_DELAY: 450,
   FFT_SIZE: 512,
-  SMOOTHING: 0.85,
-  MIN_DECIBELS: -100,
-  MAX_DECIBELS: -30,
 };
 
 const localVolumeMonitorRef = {
   analyser: null as AnalyserNode | null,
   frame: null as number | null,
-  audioContext: null as AudioContext | null,
   source: null as MediaStreamAudioSourceNode | null,
 };
 
@@ -45,6 +40,7 @@ export function useLocalAudioMonitoring({
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const stopTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectionStateUnsubscribeRef = useRef<(() => void) | null>(null);
   const wasSpeakingRef = useRef(false);
 
   const getAudioContext = useCallback(async (): Promise<AudioContext> => {
@@ -73,6 +69,8 @@ export function useLocalAudioMonitoring({
       clearTimeout(stopTimeoutRef.current);
       stopTimeoutRef.current = null;
     }
+    connectionStateUnsubscribeRef.current?.();
+    connectionStateUnsubscribeRef.current = null;
     analyserRef.current = null;
   }, []);
 
@@ -86,22 +84,15 @@ export function useLocalAudioMonitoring({
         cancelAnimationFrame(localVolumeMonitorRef.frame);
         localVolumeMonitorRef.frame = null;
       }
-      if (
-        localVolumeMonitorRef.source &&
-        localVolumeMonitorRef.analyser
-      ) {
+      if (localVolumeMonitorRef.source) {
         try {
           localVolumeMonitorRef.source.disconnect();
         } catch {
           
         }
       }
-      if (localVolumeMonitorRef.audioContext?.state !== "closed") {
-        try {
-          localVolumeMonitorRef.audioContext?.close();
-        } catch {
-          
-        }
+      if (localVolumeMonitorRef.analyser) {
+        localVolumeMonitorRef.analyser.disconnect();
       }
 
       try {
@@ -114,7 +105,6 @@ export function useLocalAudioMonitoring({
         source.connect(analyser);
 
         localVolumeMonitorRef.analyser = analyser;
-        localVolumeMonitorRef.audioContext = ctx;
         localVolumeMonitorRef.source = source;
 
         const data = new Uint8Array(analyser.fftSize);
@@ -181,14 +171,6 @@ export function useLocalAudioMonitoring({
       }
       localVolumeMonitorRef.analyser = null;
     }
-    if (localVolumeMonitorRef.audioContext?.state !== "closed") {
-      try {
-        localVolumeMonitorRef.audioContext?.close();
-      } catch {
-        
-      }
-      localVolumeMonitorRef.audioContext = null;
-    }
   }, []);
 
   const initializeAudioDetection = useCallback(
@@ -200,32 +182,46 @@ export function useLocalAudioMonitoring({
         const analyser = ctx.createAnalyser();
 
         analyser.fftSize = SPEAKING_CONFIG.FFT_SIZE;
-        analyser.smoothingTimeConstant = SPEAKING_CONFIG.SMOOTHING;
-        analyser.minDecibels = SPEAKING_CONFIG.MIN_DECIBELS;
-        analyser.maxDecibels = SPEAKING_CONFIG.MAX_DECIBELS;
+        analyser.smoothingTimeConstant = 0.65;
 
         const source = ctx.createMediaStreamSource(stream);
         source.connect(analyser);
 
         analyserRef.current = analyser;
 
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        const dataArray = new Float32Array(analyser.fftSize);
+        const resetForConnectionLoss = () => {
+          if (stopTimeoutRef.current !== null) {
+            clearTimeout(stopTimeoutRef.current);
+            stopTimeoutRef.current = null;
+          }
+          wasSpeakingRef.current = false;
+          dispatch(removeSpeakingUser(userId));
+        };
+        connectionStateUnsubscribeRef.current =
+          roomSocketManager.onStateChange((state) => {
+            if (state !== "connected") {
+              resetForConnectionLoss();
+            }
+          });
 
         const detect = () => {
           const track = localStreamRef.current?.getAudioTracks()[0];
-          const enabled = track?.enabled ?? false;
+          const enabled =
+            track?.enabled === true && track.readyState === "live";
+          const connected =
+            roomSocketManager.getConnectionState() === "connected";
 
-          if (enabled) {
-            analyser.getByteFrequencyData(dataArray);
-
-            const voiceBins = dataArray.slice(
-              SPEAKING_CONFIG.VOICE_BAND_START,
-              SPEAKING_CONFIG.VOICE_BAND_END,
+          if (enabled && connected) {
+            analyser.getFloatTimeDomainData(dataArray);
+            const rms = Math.sqrt(
+              dataArray.reduce((sum, sample) => sum + sample * sample, 0) /
+                dataArray.length,
             );
-
-            const energy =
-              voiceBins.reduce((a, b) => a + b, 0) / voiceBins.length;
-            const speaking = energy > SPEAKING_CONFIG.SPEAKING_THRESHOLD;
+            const threshold = wasSpeakingRef.current
+              ? SPEAKING_CONFIG.SPEAKING_STOP_THRESHOLD
+              : SPEAKING_CONFIG.SPEAKING_START_THRESHOLD;
+            const speaking = rms >= threshold;
 
             if (speaking && !wasSpeakingRef.current) {
               if (stopTimeoutRef.current) {
@@ -248,10 +244,12 @@ export function useLocalAudioMonitoring({
                 stopTimeoutRef.current = null;
                 dispatch(removeSpeakingUser(userId));
 
-                roomSocketManager.emit("user-speaking", {
-                  roomId,
-                  speaking: false,
-                });
+                if (connected) {
+                  roomSocketManager.emit("user-speaking", {
+                    roomId,
+                    speaking: false,
+                  });
+                }
               }, SPEAKING_CONFIG.SPEAKING_STOP_DELAY);
             }
           } else if (wasSpeakingRef.current) {
