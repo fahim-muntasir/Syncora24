@@ -25,21 +25,19 @@ export default function EndRoomConfirmModal({
       aria-modal="true"
       aria-labelledby="end-room-title"
     >
-      {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+        className="absolute inset-0 bg-[#0b0b0b]/85"
         onClick={isLoading ? undefined : onClose}
       />
 
-      {/* Modal */}
-      <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-white/[0.08] bg-[#161616] shadow-2xl shadow-black/60">
-        <div className="absolute inset-x-0 top-0 h-px bg-red-500/40" />
+      <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-white/[0.08] bg-[#141414]">
+        <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-red-500/40 to-transparent" />
 
         <button
           type="button"
           onClick={onClose}
           disabled={isLoading}
-          className="absolute right-4 top-4 rounded-lg p-1.5 text-gray-600 transition-colors hover:bg-white/[0.06] hover:text-gray-300 disabled:cursor-not-allowed disabled:opacity-50"
+          className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
           aria-label="Close"
         >
           <X size={16} />
@@ -51,41 +49,21 @@ export default function EndRoomConfirmModal({
           </div>
 
           <div className="pr-8">
-            <h2
-              id="end-room-title"
-              className="text-base font-semibold text-white"
-            >
+            <h2 id="end-room-title" className="text-base font-semibold text-white">
               End this room?
             </h2>
-
             <p className="mt-2 text-sm leading-relaxed text-gray-500">
-              Ending this room will close the conversation for everyone
-              currently inside. Participants will be notified that the room
-              has ended.
+              Ending this room closes the conversation for everyone inside. Participants are
+              notified that the room has ended, and it stays in the room list as ended.
             </p>
           </div>
 
-          <div className="mt-5 rounded-xl border border-red-500/10 bg-red-500/[0.04] px-3.5 py-3">
-            <div className="flex items-start gap-2.5">
-              <PhoneOff
-                size={14}
-                className="mt-0.5 flex-shrink-0 text-red-400/70"
-              />
-
-              <p className="text-[11px] leading-relaxed text-gray-500">
-                This action will end the active voice session for all
-                participants. You can still see the room as ended in the room
-                list.
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-6 flex items-center justify-end gap-2.5">
+          <div className="mt-6 flex items-center justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
               disabled={isLoading}
-              className="rounded-lg border border-white/[0.07] bg-white/[0.03] px-4 py-2 text-xs font-medium text-gray-400 transition-all hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              className="h-10 rounded-lg border border-white/[0.1] px-4 text-sm font-medium text-gray-200 transition-colors hover:border-white/[0.2] hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
             >
               Cancel
             </button>
@@ -94,11 +72,10 @@ export default function EndRoomConfirmModal({
               type="button"
               onClick={onConfirm}
               disabled={isLoading}
-              className="flex min-w-[100px] items-center justify-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2 text-xs font-semibold text-red-400 transition-all hover:border-red-500/30 hover:bg-red-500/15 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-10 min-w-[110px] items-center justify-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
             >
-              <PhoneOff size={13} />
-
-              {isLoading ? "Ending..." : "End room"}
+              <PhoneOff size={14} />
+              {isLoading ? "Ending…" : "End room"}
             </button>
           </div>
         </div>

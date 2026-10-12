@@ -1,21 +1,31 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
-  ChevronRight, MessageSquareText, Users, HelpCircle,
-  ShieldCheck, Mic, UserMinus, Flag,
-  Clock, ArrowRightCircle,
   Activity,
+  ArrowRightCircle,
+  ChevronRight,
+  Clock,
+  HelpCircle,
+  MessageSquareText,
+  Mic,
+  MicOff,
+  MonitorOff,
+  MonitorUp,
+  ShieldCheck,
+  SlidersHorizontal,
+  Users,
   Video,
   VideoOff,
-  MicOff,
-  MonitorUp,
-  MonitorOff,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { roomSocketManager } from "@/libs/socket/index";
 import { useAppSelector } from "@/libs/hooks";
 import Chat from "./Chat";
 import { ChatItem, IncomingMessage, Message, RoomActivity } from "@/types/chat";
 import { RoomType } from "@/types/room";
 import ParticipantsList from "./ParticipantsList";
+import HostControls from "./HostControls";
+
+type Tab = "Chat" | "Participants" | "Safety" | "Quizzes" | "Activity" | "Controls";
 
 interface ActivityEvent {
   id: string;
@@ -37,44 +47,47 @@ interface ActivityEvent {
   timestamp: Date;
 }
 
-// ── ACTIVITY FEED COMPONENT ────────────────────────────────────────
-function ActivityFeed({ events }: { events: ActivityEvent[] }) {
-  const typeConfig = {
-    joined: { icon: ArrowRightCircle, color: "text-green-400", bg: "bg-green-500/10", label: "joined" },
-    left: { icon: ArrowRightCircle, color: "text-gray-500", bg: "bg-white/[0.04]", label: "left" },
-    speaking: { icon: Mic, color: "text-blue-400", bg: "bg-blue-500/10", label: "spoke" },
-    raised_hand: { icon: Clock, color: "text-amber-400", bg: "bg-amber-500/10", label: "raised hand" },
-    "camera-started": { icon: Video, color: "text-green-400", bg: "bg-green-500/10", label: "started their camera" },
-    "camera-stopped": { icon: VideoOff, color: "text-gray-500", bg: "bg-white/[0.04]", label: "stopped their camera" },
-    "microphone-started": { icon: Mic, color: "text-green-400", bg: "bg-green-500/10", label: "turned on their microphone" },
-    "microphone-stopped": { icon: MicOff, color: "text-gray-500", bg: "bg-white/[0.04]", label: "turned off their microphone" },
-    "screen-share-started": { icon: MonitorUp, color: "text-green-400", bg: "bg-green-500/10", label: "started sharing their screen" },
-    "screen-share-stopped": { icon: MonitorOff, color: "text-gray-500", bg: "bg-white/[0.04]", label: "stopped sharing their screen" },
-    "camera-permission-changed": { icon: Video, color: "text-amber-400", bg: "bg-amber-500/10", label: "changed camera permissions" },
-    "position-changed": { icon: Users, color: "text-violet-400", bg: "bg-violet-500/10", label: "changed position" },
-  };
+const activityConfig: Record<
+  ActivityEvent["type"],
+  { icon: LucideIcon; color: string; label: string }
+> = {
+  joined: { icon: ArrowRightCircle, color: "text-emerald-400", label: "joined" },
+  left: { icon: ArrowRightCircle, color: "text-gray-500", label: "left" },
+  speaking: { icon: Mic, color: "text-gray-400", label: "spoke" },
+  raised_hand: { icon: Clock, color: "text-gray-400", label: "raised hand" },
+  "camera-started": { icon: Video, color: "text-emerald-400", label: "started their camera" },
+  "camera-stopped": { icon: VideoOff, color: "text-gray-500", label: "stopped their camera" },
+  "microphone-started": { icon: Mic, color: "text-emerald-400", label: "turned on their microphone" },
+  "microphone-stopped": { icon: MicOff, color: "text-gray-500", label: "turned off their microphone" },
+  "screen-share-started": { icon: MonitorUp, color: "text-emerald-400", label: "started sharing their screen" },
+  "screen-share-stopped": { icon: MonitorOff, color: "text-gray-500", label: "stopped sharing their screen" },
+  "camera-permission-changed": { icon: Video, color: "text-gray-400", label: "changed camera permissions" },
+  "position-changed": { icon: Users, color: "text-gray-400", label: "changed position" },
+};
 
-  if (events.length === 0) return (
-    <div className="flex flex-col items-center justify-center h-32 gap-2 text-center">
-      <Clock size={18} className="text-gray-700" />
-      <span className="text-xs text-gray-600">Activity will appear here</span>
-    </div>
-  );
+function ActivityFeed({ events }: { events: ActivityEvent[] }) {
+  if (events.length === 0) {
+    return (
+      <div className="flex h-32 flex-col items-center justify-center gap-2 text-center">
+        <Clock size={18} className="text-gray-700" />
+        <span className="text-xs text-gray-600">Activity will appear here</span>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+    <div className="flex-1 space-y-2.5 overflow-y-auto px-4 py-3 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
       {events.map((event) => {
-        const cfg = typeConfig[event.type];
+        const cfg = activityConfig[event.type];
         const Icon = cfg.icon;
         return (
           <div key={event.id} className="flex items-center gap-2.5">
-            <div className={`p-1.5 rounded-lg ${cfg.bg} flex-shrink-0`}>
-              <Icon size={11} className={cfg.color} />
-            </div>
-            <span className="text-xs text-gray-400 truncate">
-              <span className="font-medium text-white">{event.name}</span> {event.detail ?? cfg.label}
+            <Icon size={13} className={`shrink-0 ${cfg.color}`} />
+            <span className="min-w-0 truncate text-xs text-gray-400">
+              <span className="font-medium text-gray-200">{event.name}</span>{" "}
+              {event.detail ?? cfg.label}
             </span>
-            <span className="ml-auto text-[10px] text-gray-700 flex-shrink-0">
+            <span className="ml-auto shrink-0 text-[10px] tabular-nums text-gray-600">
               {event.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             </span>
           </div>
@@ -84,50 +97,33 @@ function ActivityFeed({ events }: { events: ActivityEvent[] }) {
   );
 }
 
-// ── SAFETY PANEL COMPONENT ─────────────────────────────────────────
 function SafetyPanel() {
   return (
-    <div className="flex-1 overflow-y-auto px-3 py-4 space-y-4 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-      {/* Safety status */}
-      <div className="p-3 rounded-xl bg-emerald-500/8 border border-emerald-500/15">
-        <div className="flex items-center gap-2 mb-1">
+    <div className="flex-1 space-y-5 overflow-y-auto px-4 py-4 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+      <div className="rounded-lg border border-white/[0.07] bg-[#161616] p-3.5">
+        <div className="mb-1 flex items-center gap-2">
           <ShieldCheck size={14} className="text-emerald-400" />
-          <span className="text-sm font-semibold text-white">Room is safe</span>
+          <span className="text-sm font-medium text-white">Actively moderated</span>
         </div>
-        <p className="text-xs text-gray-500">This room is actively moderated and follows community guidelines.</p>
+        <p className="text-xs leading-relaxed text-gray-500">
+          This room follows the community guidelines. Hosts and moderators can remove members who break them.
+        </p>
       </div>
 
-      {/* Quick actions */}
       <div>
-        <span className="text-[10px] font-bold uppercase tracking-widest text-gray-600 block mb-2">Quick actions</span>
-        <div className="space-y-1.5">
-          <button className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06] text-sm text-gray-300 hover:bg-white/[0.06] hover:text-white transition-colors text-left">
-            <Flag size={14} className="text-orange-400 flex-shrink-0" /> Report a user
-          </button>
-          <button className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06] text-sm text-gray-300 hover:bg-white/[0.06] hover:text-white transition-colors text-left">
-            <UserMinus size={14} className="text-gray-400 flex-shrink-0" /> Block a user
-          </button>
-          <button className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-red-500/8 border border-red-500/15 text-sm text-red-400/80 hover:bg-red-500/12 hover:text-red-400 transition-colors text-left">
-            <Flag size={14} className="text-red-400 flex-shrink-0" /> Report this room
-          </button>
-        </div>
-      </div>
-
-      {/* Reminders */}
-      <div>
-        <span className="text-[10px] font-bold uppercase tracking-widest text-gray-600 block mb-2">Community reminders</span>
-        <div className="space-y-2 text-xs text-gray-500 leading-relaxed">
-          <p>· Be respectful and kind to all participants.</p>
-          <p>· You can leave at any time — no explanation needed.</p>
-          <p>· Any behaviour that makes you uncomfortable can be reported.</p>
-          <p>· Moderators are here to help — not just to discipline.</p>
-        </div>
+        <h3 className="mb-2 text-[10px] font-medium uppercase tracking-wider text-gray-500">
+          Community reminders
+        </h3>
+        <ul className="space-y-2 text-xs leading-relaxed text-gray-500">
+          <li>Be respectful and kind to all participants.</li>
+          <li>You can leave at any time, no explanation needed.</li>
+          <li>Moderators are here to help, not just to discipline.</li>
+        </ul>
       </div>
     </div>
   );
 }
 
-// ── MAIN SIDE PANEL ────────────────────────────────────────────────
 export default function SidePanel({
   sidebarCollapsed,
   setSidebarCollapsed,
@@ -145,7 +141,7 @@ export default function SidePanel({
   currentUserIsHost?: boolean;
   currentUserIsModerator?: boolean;
 }) {
-  const [activeTab, setActiveTab] = useState<"Chat" | "Participants" | "Safety" | "Quizzes" | "Activity">("Chat");
+  const [activeTab, setActiveTab] = useState<Tab>("Chat");
   const [messages, setMessages] = useState<ChatItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
@@ -154,45 +150,13 @@ export default function SidePanel({
   const activeTabRef = useRef(activeTab);
   const sidebarCollapsedRef = useRef(sidebarCollapsed);
 
-  useEffect(() => {
-    setActivityEvents([
-      {
-        id: "1",
-        type: "joined",
-        name: "Sarah Johnson",
-        timestamp: new Date(Date.now() - 1000 * 60 * 20),
-      },
-      {
-        id: "2",
-        type: "speaking",
-        name: "Ahmed Rahman",
-        timestamp: new Date(Date.now() - 1000 * 60 * 15),
-      },
-      {
-        id: "3",
-        type: "raised_hand",
-        name: "Maria Garcia",
-        timestamp: new Date(Date.now() - 1000 * 60 * 10),
-      },
-      {
-        id: "4",
-        type: "joined",
-        name: "Emily Chen",
-        timestamp: new Date(Date.now() - 1000 * 60 * 5),
-      },
-      {
-        id: "5",
-        type: "left",
-        name: "David Wilson",
-        timestamp: new Date(Date.now() - 1000 * 60 * 2),
-      },
-    ])
-  }, [])
+  const expanded = sidebarCollapsed;
+  const isPrivileged = currentUserIsHost || currentUserIsModerator;
+  const tab: Tab = activeTab === "Controls" && !isPrivileged ? "Chat" : activeTab;
 
   useEffect(() => { sidebarCollapsedRef.current = sidebarCollapsed; }, [sidebarCollapsed]);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
 
-  // Inbound chat messages
   useEffect(() => {
     const unsub = roomSocketManager.on("messageReceived", (payload: unknown) => {
       const data = payload as IncomingMessage;
@@ -231,9 +195,7 @@ export default function SidePanel({
         activity,
         timestamp: activity.timestamp,
       };
-      setMessages((prev) => [...prev, item].sort((a, b) => {
-        return a.timestamp - b.timestamp;
-      }));
+      setMessages((prev) => [...prev, item].sort((a, b) => a.timestamp - b.timestamp));
     });
     return () => unsub();
   }, []);
@@ -271,18 +233,20 @@ export default function SidePanel({
         return;
       }
 
-      if (activity.type !== "camera-started" &&
-          activity.type !== "camera-stopped" &&
-          activity.type !== "microphone-started" &&
-          activity.type !== "microphone-stopped" &&
-          activity.type !== "screen-share-started" &&
-          activity.type !== "screen-share-stopped" &&
-          activity.type !== "camera-permission-changed") return;
+      if (
+        activity.type !== "camera-started" &&
+        activity.type !== "camera-stopped" &&
+        activity.type !== "microphone-started" &&
+        activity.type !== "microphone-stopped" &&
+        activity.type !== "screen-share-started" &&
+        activity.type !== "screen-share-stopped" &&
+        activity.type !== "camera-permission-changed"
+      ) {
+        return;
+      }
 
       const name =
-        activity.type === "camera-permission-changed"
-          ? activity.actorName
-          : activity.userName;
+        activity.type === "camera-permission-changed" ? activity.actorName : activity.userName;
       const detail =
         activity.type === "camera-permission-changed"
           ? `${activity.enabled ? "enabled" : "disabled"} camera access for ${
@@ -304,131 +268,144 @@ export default function SidePanel({
     return () => unsub();
   }, []);
 
-  const icons: { label: typeof activeTab; icon: React.ReactNode; badge?: number; soon?: boolean }[] = [
-    { label: "Chat", icon: <MessageSquareText size={20} />, badge: unreadCount },
-    { label: "Participants", icon: <Users size={20} /> },
-    { label: "Safety", icon: <ShieldCheck size={20} /> },
-    { label: "Quizzes", icon: <HelpCircle size={20} />, soon: true },
-    { label: "Activity", icon: <Activity size={20} /> },
+  const tabs: { label: Tab; icon: React.ReactNode; badge?: number }[] = [
+    { label: "Chat", icon: <MessageSquareText size={18} />, badge: unreadCount },
+    { label: "Participants", icon: <Users size={18} /> },
+    { label: "Activity", icon: <Activity size={18} /> },
+    { label: "Safety", icon: <ShieldCheck size={18} /> },
+    { label: "Quizzes", icon: <HelpCircle size={18} /> },
+    ...(isPrivileged
+      ? [{ label: "Controls" as Tab, icon: <SlidersHorizontal size={18} /> }]
+      : []),
   ];
 
-  const sideMenuHandler = (label: typeof activeTab) => {
+  const sideMenuHandler = (label: Tab) => {
     setActiveTab(label);
     if (label === "Chat") setUnreadCount(0);
     setSidebarCollapsed(true);
   };
 
-  const tabTitles: Record<typeof activeTab, string> = {
+  const tabTitles: Record<Tab, string> = {
     Chat: "Chat",
     Participants: `Participants${room ? ` · ${room.members.length}` : ""}`,
-    Safety: "Safety Center",
+    Safety: "Safety",
     Quizzes: "Quizzes",
     Activity: "Activity",
+    Controls: "Room controls",
   };
 
+  const badge = (count?: number) =>
+    count != null && count > 0 ? (
+      <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-green-500 px-0.5 text-[9px] font-semibold text-white">
+        {count > 99 ? "99+" : count}
+      </span>
+    ) : null;
+
   return (
-    <div className={`bg-[#0d0d0d] z-10 border-l border-white/[0.06] flex flex-col transition-all duration-300 ${!sidebarCollapsed ? "w-14" : "w-[22rem]"}`}>
-
-      {/* ── COLLAPSED: Icon rail ─────────────────────── */}
-      {!sidebarCollapsed && (
-        <div className="flex flex-col items-center gap-1 pt-4 pb-8 flex-1 justify-end">
-          {icons.map((item) => (
-            <button
-              key={item.label}
-              onClick={() => sideMenuHandler(item.label)}
-              title={item.label}
-              className="relative flex items-center justify-center w-10 h-10 rounded-xl hover:bg-white/[0.06] text-gray-500 hover:text-white transition-all"
-            >
-              {item.icon}
-              {item.badge != null && item.badge > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-0.5 flex items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
-                  {item.badge > 99 ? "99+" : item.badge}
-                </span>
-              )}
-              {item.soon && (
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-purple-400/60 border border-[#0d0d0d]" />
-              )}
-            </button>
-          ))}
-        </div>
+    <>
+      {expanded && (
+        <div
+          className="fixed inset-0 z-20 bg-[#0b0b0b]/70 lg:hidden"
+          onClick={() => setSidebarCollapsed(false)}
+          aria-hidden="true"
+        />
       )}
 
-      {/* ── EXPANDED ────────────────────────────────── */}
-      {sidebarCollapsed && (
-        <>
-          {/* Tab strip */}
-          <div className="flex items-center gap-0.5 h-14 border-b border-white/[0.06] px-3 flex-shrink-0">
-            {icons.map((item) => (
-              <button
-                key={item.label}
-                onClick={() => sideMenuHandler(item.label)}
-                title={item.label}
-                className={`relative flex items-center justify-center w-9 h-9 rounded-lg transition-all ${activeTab === item.label
-                  ? "bg-white/[0.09] text-white"
-                  : "text-gray-600 hover:text-gray-300 hover:bg-white/[0.04]"
+      <aside
+        aria-label="Room side panel"
+        className={`flex shrink-0 flex-col border-l border-white/[0.06] bg-[#0f0f0f] ${
+          expanded
+            ? "fixed inset-y-0 right-0 z-30 w-full max-w-sm lg:static lg:z-auto lg:w-[22rem] lg:max-w-none"
+            : "w-14"
+        }`}
+      >
+        {!expanded && (
+          <>
+            <div className="h-14 shrink-0 border-b border-white/[0.06]" />
+            <div className="flex flex-col items-center gap-1 py-3">
+              {tabs.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => sideMenuHandler(item.label)}
+                  title={item.label}
+                  aria-label={item.label}
+                  className="relative flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-500/60 motion-reduce:transition-none"
+                >
+                  {item.icon}
+                  {badge(item.badge)}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {expanded && (
+          <>
+            <div className="flex h-14 shrink-0 items-center gap-0.5 border-b border-white/[0.06] px-3">
+              {tabs.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => sideMenuHandler(item.label)}
+                  title={item.label}
+                  aria-label={item.label}
+                  aria-pressed={tab === item.label}
+                  className={`relative flex h-9 w-9 items-center justify-center rounded-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-500/60 motion-reduce:transition-none ${
+                    tab === item.label
+                      ? "bg-white/[0.09] text-white"
+                      : "text-gray-500 hover:bg-white/[0.04] hover:text-gray-200"
                   }`}
+                >
+                  {item.icon}
+                  {badge(item.badge)}
+                </button>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => setSidebarCollapsed(false)}
+                aria-label="Collapse panel"
+                title="Collapse panel"
+                className="ml-auto flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-white/[0.04] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-500/60 motion-reduce:transition-none"
               >
-                {item.icon}
-                {item.badge != null && item.badge > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-0.5 flex items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
-                    {item.badge > 99 ? "99+" : item.badge}
-                  </span>
-                )}
-                {item.soon && (
-                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-purple-400/60 border border-[#0d0d0d]" />
-                )}
+                <ChevronRight size={18} />
               </button>
-            ))}
+            </div>
 
-            {/* Collapse button */}
-            <button
-              onClick={() => setSidebarCollapsed(false)}
-              className="ml-auto p-2 rounded-lg text-gray-600 hover:text-white hover:bg-white/[0.04] transition-all"
-            >
-              <ChevronRight size={18} />
-            </button>
-          </div>
+            <div className="shrink-0 border-b border-white/[0.04] px-4 py-2.5">
+              <h2 className="text-xs font-semibold text-gray-300">{tabTitles[tab]}</h2>
+            </div>
 
-          {/* Tab title */}
-          <div className="px-4 py-2.5 border-b border-white/[0.04] flex-shrink-0">
-            <span className="text-xs font-semibold text-gray-400">{tabTitles[activeTab]}</span>
-          </div>
-
-          {/* Tab content */}
-          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-            {activeTab === "Chat" && (
-              <Chat messages={messages} setMessages={setMessages} />
-            )}
-            {activeTab === "Participants" && (
-              <ParticipantsList
-                room={room ?? null}
-                speakingUsers={speakingUsers}
-                unMutedUsers={unMutedUsers}
-                currentUserIsHost={currentUserIsHost}
-                currentUserIsModerator={currentUserIsModerator}
-              />
-            )}
-            {activeTab === "Safety" && <SafetyPanel />}
-            {activeTab === "Quizzes" && (
-              <div className="flex-1 flex flex-col items-center justify-center gap-3 px-4 text-center">
-                <div className="w-12 h-12 rounded-2xl bg-purple-500/10 border border-purple-500/15 flex items-center justify-center">
-                  <HelpCircle size={20} className="text-purple-400/50" />
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              {tab === "Chat" && <Chat messages={messages} setMessages={setMessages} />}
+              {tab === "Participants" && (
+                <ParticipantsList
+                  room={room ?? null}
+                  speakingUsers={speakingUsers}
+                  unMutedUsers={unMutedUsers}
+                  currentUserIsHost={currentUserIsHost}
+                  currentUserIsModerator={currentUserIsModerator}
+                />
+              )}
+              {tab === "Safety" && <SafetyPanel />}
+              {tab === "Quizzes" && (
+                <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+                  <HelpCircle size={20} className="text-gray-600" />
+                  <p className="text-sm font-medium text-white">Quizzes</p>
+                  <p className="text-xs leading-relaxed text-gray-500">
+                    Interactive language quizzes are coming soon.
+                  </p>
                 </div>
-                <div>
-                  <p className="text-sm font-semibold text-white mb-1">Quizzes</p>
-                  <p className="text-xs text-gray-500">Interactive language quizzes and challenges are coming soon.</p>
-                </div>
-                <span className="text-[10px] px-2.5 py-1 rounded-full bg-purple-500/10 border border-purple-500/15 text-purple-400/60">
-                  Coming soon
-                </span>
-              </div>
-            )}
-            {activeTab === "Activity" && (
-              <ActivityFeed events={activityEvents} />
-            )}
-          </div>
-        </>
-      )}
-    </div>
+              )}
+              {tab === "Activity" && <ActivityFeed events={activityEvents} />}
+              {tab === "Controls" && isPrivileged && (
+                <HostControls room={room ?? null} currentUserIsHost={currentUserIsHost} />
+              )}
+            </div>
+          </>
+        )}
+      </aside>
+    </>
   );
 }

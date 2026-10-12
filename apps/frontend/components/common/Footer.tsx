@@ -8,7 +8,7 @@ export default function Footer() {
   const { creator } = siteConfig;
 
   return (
-    <footer className="relative border-t border-white/[0.06] bg-[#111111]/80">
+    <footer className="relative border-t border-white/[0.06] bg-[#111111]">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 
         <div className="flex flex-col gap-2 py-5 text-sm text-gray-500 sm:flex-row sm:items-center sm:justify-between">

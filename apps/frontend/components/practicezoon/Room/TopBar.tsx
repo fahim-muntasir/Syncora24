@@ -1,10 +1,7 @@
-import React, { useState, useEffect, useRef } from "react";
-import {
-  MoreVertical, Globe2, Users, ShieldCheck,
-  Crown, Lock, Unlock, PhoneOff, Settings, UserX,
-  Flag,
-} from "lucide-react";
+import React from "react";
+import { Crown, Globe2, ShieldCheck, Users } from "lucide-react";
 import { RoomType } from "@/types/room";
+import LevelMeter from "./LevelMeter";
 
 interface TopBarProps {
   room: RoomType | null;
@@ -12,187 +9,45 @@ interface TopBarProps {
   currentUserIsModerator?: boolean;
 }
 
-const levelConfig: Record<string, { bg: string; text: string; border: string }> = {
-  Beginner:     { bg: "bg-emerald-500/10", text: "text-emerald-400", border: "border-emerald-500/20" },
-  Intermediate: { bg: "bg-amber-500/10",   text: "text-amber-400",   border: "border-amber-500/20"   },
-  Advanced:     { bg: "bg-orange-500/10",  text: "text-orange-400",  border: "border-orange-500/20"  },
-  Native:       { bg: "bg-blue-500/10",    text: "text-blue-400",    border: "border-blue-500/20"    },
-};
-
 export default function TopBar({
   room,
   currentUserIsHost = false,
   currentUserIsModerator = false,
 }: TopBarProps) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [isRoomLocked, setIsRoomLocked] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  const level = room?.level ? (levelConfig[room.level] ?? levelConfig.Beginner) : null;
-
-  // Close menu on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
+  const isUnlimited =
+    room && (room.maxParticipants === 0 || room.maxParticipants === Infinity);
 
   return (
-    <div
-      className="h-14 flex items-center justify-between px-4 sm:px-6 border-b border-white/[0.06] flex-shrink-0 relative"
-      style={{ background: "rgba(14,14,14,0.95)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}
-    >
-      {/* ── LEFT: Room info ─────────────────────────── */}
-      <div className="flex items-center gap-2.5 min-w-0 flex-1">
-        {/* Live pulse */}
-        <div className="flex-shrink-0 flex items-center">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400" />
-          </span>
-        </div>
+    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] bg-[#111111] px-3 sm:px-4">
+      <div className="flex min-w-0 items-center gap-3">
 
-        <span className="text-white font-semibold text-sm truncate max-w-[130px] sm:max-w-xs">
-          {room?.title ?? "Loading…"}
-        </span>
-
-        <div className="hidden sm:block w-px h-4 bg-white/[0.08]" />
-
-        {/* Language */}
-        {room?.language && (
-          <span className="hidden sm:flex items-center gap-1.5 text-xs text-gray-500">
-            <Globe2 size={12} /> {room.language}
-          </span>
-        )}
-
-        {/* Level badge */}
-        {level && room?.level && (
-          <span className={`hidden sm:inline-flex text-xs px-2.5 py-1 rounded-full border font-medium ${level.bg} ${level.text} ${level.border}`}>
-            {room.level}
-          </span>
-        )}
-
-        {/* Participant count */}
         {room && (
-          <span className="hidden md:flex items-center gap-1.5 text-xs text-gray-500 bg-white/[0.04] border border-white/[0.07] px-2.5 py-1 rounded-full">
-            <Users size={12} />
-            {room.members.length}/{room.maxParticipants}
-          </span>
+          <div className="hidden items-center gap-3 text-xs text-gray-400 md:flex">
+            <LevelMeter level={room.level} />
+            <span className="flex items-center gap-1.5">
+              <Globe2 size={12} className="text-gray-500" />
+              {room.language}
+            </span>
+            <span className="flex items-center gap-1.5 tabular-nums">
+              <Users size={12} className="text-gray-500" />
+              {room.members.length}/{isUnlimited ? "∞" : room.maxParticipants}
+            </span>
+          </div>
         )}
-
-        {/* Room lock indicator */}
-        <span
-          className={`hidden md:flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border ${
-            isRoomLocked
-              ? "bg-red-500/10 border-red-500/20 text-red-400"
-              : "bg-white/[0.04] border-white/[0.07] text-gray-600"
-          }`}
-        >
-          {isRoomLocked ? <Lock size={11} /> : <Unlock size={11} />}
-          {isRoomLocked ? "Locked" : "Open"}
-        </span>
-
       </div>
 
-      {/* ── RIGHT: Status + actions ──────────────────── */}
-      <div className="flex items-center gap-2 flex-shrink-0">
-        {/* Moderator quick-action (mod only, not host) */}
-        {currentUserIsModerator && !currentUserIsHost && (
-          <button
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-blue-500/20 bg-blue-500/8 text-blue-400/70 hover:text-blue-400 hover:border-blue-500/30 text-xs font-medium transition-all duration-200"
-            title="Moderator tools"
-          >
-            <ShieldCheck size={13} /> Mod tools
-          </button>
-        )}
-
-        {/* Room management menu */}
-        <div className="relative" ref={menuRef}>
-          <button
-            onClick={() => setMenuOpen(!menuOpen)}
-            className="p-2 rounded-xl border border-white/[0.06] text-gray-500 hover:text-white hover:border-white/[0.12] hover:bg-white/[0.04] transition-all duration-200"
-            title="Room options"
-          >
-            <MoreVertical size={16} />
-          </button>
-
-          {/* ── DROPDOWN ──────────────────────────────── */}
-          {menuOpen && (
-            <div className="absolute top-full right-0 mt-2 w-52 rounded-xl border border-white/[0.10] bg-[#1a1a1a] shadow-2xl shadow-black/60 overflow-hidden z-50">
-              {/* Host-only section */}
-              {currentUserIsHost && (
-                <>
-                  <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-amber-500/60 flex items-center gap-1.5">
-                    <Crown size={9} /> Host controls
-                  </div>
-
-                  <button
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-gray-300 hover:bg-white/[0.06] hover:text-white transition-colors"
-                    onClick={() => { setIsRoomLocked(!isRoomLocked); setMenuOpen(false); }}
-                  >
-                    {isRoomLocked ? <Unlock size={14} className="text-emerald-400" /> : <Lock size={14} className="text-amber-400" />}
-                    {isRoomLocked ? "Unlock room" : "Lock room"}
-                  </button>
-
-                  <button className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-gray-300 hover:bg-white/[0.06] hover:text-white transition-colors">
-                    <Settings size={14} className="text-gray-400" /> Room settings
-                  </button>
-
-                  <button className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-gray-300 hover:bg-white/[0.06] hover:text-white transition-colors">
-                    <Users size={14} className="text-blue-400" /> Manage join requests
-                  </button>
-
-                  <div className="border-t border-white/[0.06] my-1" />
-
-                  <button className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-red-400 hover:bg-red-500/8 transition-colors">
-                    <PhoneOff size={14} /> End room for all
-                  </button>
-
-                  <div className="border-t border-white/[0.06] my-1" />
-                </>
-              )}
-
-              {/* Moderator section */}
-              {(currentUserIsHost || currentUserIsModerator) && (
-                <>
-                  <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-blue-500/60 flex items-center gap-1.5">
-                    <ShieldCheck size={9} /> Moderation
-                  </div>
-                  <button className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-gray-300 hover:bg-white/[0.06] hover:text-white transition-colors">
-                    <UserX size={14} className="text-orange-400" /> View reports
-                  </button>
-                  <div className="border-t border-white/[0.06] my-1" />
-                </>
-              )}
-
-              {/* All users section */}
-              <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-600">
-                Your actions
-              </div>
-              <button className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-gray-300 hover:bg-white/[0.06] hover:text-white transition-colors">
-                <Flag size={14} className="text-orange-400/70" /> Report this room
-              </button>
-              <button className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-gray-300 hover:bg-white/[0.06] hover:text-white transition-colors">
-                <ShieldCheck size={14} className="text-emerald-400/70" /> Safety center
-              </button>
-              <div className="border-t border-white/[0.06] my-1" />
-              <button className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-red-400/80 hover:text-red-400 hover:bg-red-500/5 transition-colors">
-                <PhoneOff size={14} /> Leave room
-              </button>
-
-              {/* Moderation status footer */}
-              <div className="px-3 py-2.5 bg-emerald-500/5 border-t border-emerald-500/10 flex items-center gap-1.5">
-                <ShieldCheck size={11} className="text-emerald-500/60" />
-                <span className="text-[10px] text-emerald-600/80">Actively moderated</span>
-              </div>
-            </div>
+      {(currentUserIsHost || currentUserIsModerator) && (
+        <span className="flex shrink-0 items-center gap-1.5 text-xs text-gray-400">
+          {currentUserIsHost ? (
+            <Crown size={13} className="text-amber-400" />
+          ) : (
+            <ShieldCheck size={13} className="text-blue-400" />
           )}
-        </div>
-      </div>
-    </div>
+          <span className="hidden sm:inline">
+            {currentUserIsHost ? "You’re the host" : "You’re a moderator"}
+          </span>
+        </span>
+      )}
+    </header>
   );
 }
