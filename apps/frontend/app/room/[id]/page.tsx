@@ -133,7 +133,7 @@ export default function VideoConference() {
     currentUserId: currentUser?.id,
     isPrivileged: Boolean(
       currentUser &&
-        (currentUser.id === room?.hostId || moderatorIds.includes(currentUser.id)),
+      (currentUser.id === room?.hostId || moderatorIds.includes(currentUser.id)),
     ),
     onUserJoined: handleUserJoined,
     onUserLeft: handleUserLeft,
@@ -219,8 +219,8 @@ export default function VideoConference() {
             ...previous,
             members: exists
               ? previous.members.map((member) =>
-                  member.id === event.newMember.id ? event.newMember : member,
-                )
+                member.id === event.newMember.id ? event.newMember : member,
+              )
               : [...previous.members, event.newMember],
           };
         });
@@ -238,13 +238,13 @@ export default function VideoConference() {
         setRoom((previous) =>
           previous
             ? {
-                ...previous,
-                members: previous.members.map((member) =>
-                  member.id === event.memberId
-                    ? { ...member, side: event.side }
-                    : member,
-                ),
-              }
+              ...previous,
+              members: previous.members.map((member) =>
+                member.id === event.memberId
+                  ? { ...member, side: event.side }
+                  : member,
+              ),
+            }
             : previous,
         );
       },
@@ -257,11 +257,11 @@ export default function VideoConference() {
         setRoom((previous) =>
           previous
             ? {
-                ...previous,
-                members: previous.members.filter(
-                  (member) => member.id !== event.memberId,
-                ),
-              }
+              ...previous,
+              members: previous.members.filter(
+                (member) => member.id !== event.memberId,
+              ),
+            }
             : previous,
         );
       },
@@ -295,7 +295,7 @@ export default function VideoConference() {
   }, [roomId]);
 
   return (
-    <div className="flex flex-col min-h-screen relative bg-[#0e0e0e] overflow-hidden">
+    <div className="relative flex h-[100dvh] flex-col overflow-hidden bg-[#111111]">
       <BackgroundPattern />
 
       <RoomDetailsModal
@@ -305,19 +305,12 @@ export default function VideoConference() {
         onKicked={handleKicked}
       />
 
-      <RoomEndedModal
-        isOpen={showRoomEndedModal}
-        onLeave={handleLeaveRoom}
-      />
+      <RoomEndedModal isOpen={showRoomEndedModal} onLeave={handleLeaveRoom} />
 
-      <RoomKickedModal
-        isOpen={showRoomKickedModal}
-        onLeave={handleLeaveRoom}
-      />
+      <RoomKickedModal isOpen={showRoomKickedModal} onLeave={handleLeaveRoom} />
 
-      {/* Room layout */}
       {isJoined && (
-        <div className="relative z-10 flex flex-1 min-h-screen overflow-hidden">
+        <div className="relative z-10 flex min-h-0 flex-1 overflow-hidden">
           <RoomLayout
             room={room}
             layout={layout}
@@ -340,7 +333,6 @@ export default function VideoConference() {
             }}
             selectScreenShare={selectScreenShare}
             selectCamera={selectCamera}
-            // isScreenSharing={isScreenSharing}
           />
         </div>
       )}

@@ -117,7 +117,7 @@ export default function AuthVisual() {
   return (
     <aside
       aria-label="About Syncora24"
-      className="relative hidden overflow-hidden border-l border-white/[0.06] lg:block bg-[#111111]/80 backdrop-blur-md"
+      className="relative hidden overflow-hidden border-l border-white/[0.06] lg:block bg-[#111111]/90"
     >
       <div className="relative flex h-full min-h-screen flex-col items-center justify-center gap-10 px-12 py-16">
         <Illustration />

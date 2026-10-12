@@ -1,22 +1,25 @@
 "use client";
 
 import React from "react";
-import { ShieldCheck, Crown, Mic, MicOff, UserMinus, Flag, Sparkles } from "lucide-react";
+import Image from "next/image";
+import { Crown, Mic, MicOff, ShieldCheck, ShieldPlus, UserX, Video, ArrowLeftRight } from "lucide-react";
+import toast from "react-hot-toast";
 import { roomSocketManager } from "@/libs/socket/index";
 import { useAppSelector } from "@/libs/hooks";
 import { RoomType } from "@/types/room";
-import Image from "next/image";
 import { generateIdenticonAvatar } from "@/utils/generateAvatar";
 import { useAudio } from "@/context/AudioContext";
 import type { ParticipantConnectionState } from "@/libs/features/room/roomSlice";
-import toast from "react-hot-toast";
+import ActionMenu from "./ActionMenu";
+import type { MenuItem } from "./ActionMenu";
+
+type Role = "host" | "moderator" | "member";
 
 export default function ParticipantsList({
   room,
   speakingUsers,
   unMutedUsers,
   currentUserIsHost,
-  // currentUserIsModerator: _currentUserIsModerator,
 }: {
   room: RoomType | null;
   speakingUsers: string[];
@@ -25,20 +28,13 @@ export default function ParticipantsList({
   currentUserIsModerator?: boolean;
 }) {
   const currentUser = useAppSelector((state) => state.auth.user);
-
-  const forceMutedUsers = useAppSelector(
-    (state) => state.room.forceMutedUsers
-  );
-
-  const muteAll = useAppSelector(
-    (state) => state.room.muteAll
-  );
-
-  const muteAllExcludedUsers = useAppSelector(
-    (state) => state.room.muteAllExcludedUsers
-  );
-
+  const forceMutedUsers = useAppSelector((state) => state.room.forceMutedUsers);
+  const muteAll = useAppSelector((state) => state.room.muteAll);
+  const muteAllExcludedUsers = useAppSelector((state) => state.room.muteAllExcludedUsers);
   const moderatorIds = useAppSelector((state) => state.room.moderatorIds);
+  const cameraDisabledMemberIds = useAppSelector(
+    (state) => state.room.cameraDisabledMemberIds,
+  );
   const participantConnectionStates = useAppSelector(
     (state) => state.room.participantConnectionStates,
   );
@@ -64,367 +60,292 @@ export default function ParticipantsList({
       }>("change-debate-side", { roomId: room.id, side: nextSide });
       toast.success(`Your position is now ${nextLabel}.`);
     } catch (error) {
-      const message = error instanceof Error
-        ? error.message
-        : "Unable to change your debate position.";
+      const message =
+        error instanceof Error ? error.message : "Unable to change your debate position.";
       toast.error(message);
     }
   };
 
   if (!room) {
     return (
-      <div className="flex items-center justify-center h-32 text-gray-600 text-sm">
+      <div className="flex h-32 items-center justify-center text-sm text-gray-600">
         Loading participants…
       </div>
     );
   }
-  const isDebateRoom = room.type === "debate";
 
-  const host = room.members.filter((m) => m.id === room.hostId);
+  const currentRoom = room;
+  const isDebateRoom = currentRoom.type === "debate";
 
-  const moderators = room.members.filter((m) => moderatorIds.includes(m.id) && m.id !== room.hostId);
-  const members = room.members.filter((m) => m.id !== room.hostId && !moderatorIds.includes(m.id));
+  const host = currentRoom.members.filter((m) => m.id === currentRoom.hostId);
+  const moderators = currentRoom.members.filter(
+    (m) => moderatorIds.includes(m.id) && m.id !== currentRoom.hostId,
+  );
+  const members = currentRoom.members.filter(
+    (m) => m.id !== currentRoom.hostId && !moderatorIds.includes(m.id),
+  );
 
   const canModerateMember = (memberId: string) => {
-    // Cannot moderate yourself
-    if (memberId === currentUser?.id) {
-      return false;
-    }
-
-    // Cannot mute host
-    if (memberId === room.hostId) {
-      return false;
-    }
-
-    return (
-      currentUserIsHost ||
-      currentUserIsModerator
-    );
+    if (memberId === currentUser?.id) return false;
+    if (memberId === currentRoom.hostId) return false;
+    return Boolean(currentUserIsHost || currentUserIsModerator);
   };
 
   const handleMuteToggle = (memberId: string) => {
-    if (!room.id) return;
+    if (!currentRoom.id) return;
 
-    const isSelf = memberId === currentUser?.id;
-
-    if (isSelf) {
-      toggleMute(room.id, memberId);
+    if (memberId === currentUser?.id) {
+      toggleMute(currentRoom.id, memberId);
       return;
     }
 
-    if (!canModerateMember(memberId)) {
-      return;
-    }
+    if (!canModerateMember(memberId)) return;
 
-    const isForceMuted =
-      forceMutedUsers.includes(memberId);
-
-    if (isForceMuted) {
-      roomSocketManager.emit(
-        "moderator-unmute-user",
-        {
-          roomId: room.id,
-          targetUserId: memberId,
-        }
-      );
+    if (forceMutedUsers.includes(memberId)) {
+      roomSocketManager.emit("moderator-unmute-user", {
+        roomId: currentRoom.id,
+        targetUserId: memberId,
+      });
     } else {
-      roomSocketManager.emit(
-        "moderator-mute-user",
-        {
-          roomId: room.id,
-          targetUserId: memberId,
-        }
-      );
+      roomSocketManager.emit("moderator-mute-user", {
+        roomId: currentRoom.id,
+        targetUserId: memberId,
+      });
     }
   };
 
   const handleKick = (memberId: string) => {
-    if (!room.id || !canModerateMember(memberId)) return;
+    if (!currentRoom.id || !canModerateMember(memberId)) return;
     roomSocketManager.emit("kick-member", {
-      roomId: room.id,
+      roomId: currentRoom.id,
       targetUserId: memberId,
     });
   };
 
-  const renderMember = (
-    member: typeof room.members[0],
-    roleLabel: string,
-    roleColor: string
-  ) => {
+  const renderMember = (member: (typeof currentRoom.members)[0], role: Role) => {
     const isSpeaking = speakingUsers.includes(member.id);
-
     const isForceMuted = forceMutedUsers.includes(member.id);
-
     const isMutedByMuteAll = muteAll && !muteAllExcludedUsers.includes(member.id);
-
     const isLocallyUnmuted = unMutedUsers.includes(member.id);
-
     const isUnMuted = isLocallyUnmuted && !isForceMuted && !isMutedByMuteAll;
-
     const isMuted = !isUnMuted;
-
     const isSelf = member.id === currentUser?.id;
+    const isModerator = role === "moderator";
+
     const connectionState: ParticipantConnectionState =
       participantConnectionStates[member.id] ?? "connected";
     const connectionLabel = {
       connected: "Connected",
       "connection-lost": "Connection lost",
-      reconnecting: "Reconnecting...",
+      reconnecting: "Reconnecting…",
       disconnected: "Disconnected",
     }[connectionState];
 
     const canModerate = canModerateMember(member.id);
+    const canKick = canModerate && (currentUserIsHost || !isModerator);
+    const showSpeaking = isSpeaking && !isMuted;
 
     const avatarSvg = !member.avatar ? generateIdenticonAvatar(member.name, 36) : null;
+
+    const selfItems: MenuItem[] = [];
+    if (isSelf) {
+      selfItems.push({
+        type: "toggle",
+        id: "own-mic",
+        label: "My microphone",
+        icon: Mic,
+        checked: !isMuted,
+        onChange: () => handleMuteToggle(member.id),
+      });
+      if (isDebateRoom && member.side) {
+        const side = member.side;
+        selfItems.push({
+          type: "action",
+          id: "switch-side",
+          label: `Switch to ${side === "for" ? "Against" : "For"}`,
+          icon: ArrowLeftRight,
+          onSelect: () => void handleChangeSide(side),
+        });
+      }
+    }
+
+    const modItems: MenuItem[] = [];
+    if (canModerate) {
+      modItems.push(
+        { type: "heading", id: "mod-heading", text: "Moderation" },
+        {
+          type: "toggle",
+          id: "camera-access",
+          label: "Camera access",
+          icon: Video,
+          checked: !cameraDisabledMemberIds.includes(member.id),
+          onChange: (next) =>
+            roomSocketManager.emit("moderator-set-member-camera", {
+              roomId: currentRoom.id,
+              targetUserId: member.id,
+              cameraEnabled: next,
+            }),
+        },
+        {
+          type: "toggle",
+          id: "mute",
+          label: "Mute participant",
+          icon: MicOff,
+          checked: isForceMuted,
+          onChange: () => handleMuteToggle(member.id),
+        },
+      );
+      if (currentUserIsHost) {
+        modItems.push({
+          type: "toggle",
+          id: "moderator",
+          label: "Moderator role",
+          icon: ShieldPlus,
+          checked: isModerator,
+          onChange: (next) =>
+            roomSocketManager.emit("set-moderator-role", {
+              roomId: currentRoom.id,
+              targetUserId: member.id,
+              isModerator: next,
+            }),
+        });
+      }
+    }
+
+    const dangerItems: MenuItem[] = canKick
+      ? [
+          {
+            type: "action",
+            id: "kick",
+            label: "Remove from room",
+            icon: UserX,
+            danger: true,
+            onSelect: () => handleKick(member.id),
+          },
+        ]
+      : [];
+
+    const menuItems = [selfItems, modItems, dangerItems]
+      .filter((group) => group.length > 0)
+      .flatMap<MenuItem>((group, index) =>
+        index === 0 ? group : [{ type: "separator", id: `sep-${index}` }, ...group],
+      );
+
+    const roleLabel = role === "host" ? "Host" : role === "moderator" ? "Moderator" : "Member";
 
     return (
       <div
         key={member.id}
-        className="group flex items-center gap-2.5 px-3 py-2 rounded-xl transition-colors duration-200 hover:bg-white/[0.04]"
+        className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors hover:bg-white/[0.04] motion-reduce:transition-none"
       >
-
-        <div className="relative flex-shrink-0">
+        <div
+          className={`relative shrink-0 rounded-full ${
+            showSpeaking ? "ring-2 ring-emerald-400" : ""
+          }`}
+        >
           {member.avatar ? (
             <Image
               src={member.avatar}
               alt={member.name}
               width={36}
               height={36}
-              className={`w-9 h-9 rounded-full object-cover border ${isForceMuted ? "border-red-500/30" : "border-white/10"
-                }`}
+              className="h-9 w-9 rounded-full border border-white/10 object-cover"
             />
           ) : (
             <div
-              dangerouslySetInnerHTML={{ __html: avatarSvg! }}
-              className={`w-9 h-9 rounded-full overflow-hidden border ${isForceMuted ? "border-red-500/30" : "border-white/10"
-                }`}
+              dangerouslySetInnerHTML={{ __html: avatarSvg ?? "" }}
+              className="h-9 w-9 overflow-hidden rounded-full border border-white/10"
             />
           )}
         </div>
 
-        {/* Info */}
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <span className="text-white text-xs font-medium truncate">
+            <span className="truncate text-xs font-medium text-white">
               {member.name}
+              {isSelf && <span className="text-gray-500"> (You)</span>}
             </span>
-
-            {isSpeaking && !isMuted && (
-              <span className="flex items-center gap-1 text-[9px] font-medium text-emerald-400 flex-shrink-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                Speaking
-              </span>
+            {role === "host" && <Crown size={11} className="shrink-0 text-amber-400" />}
+            {role === "moderator" && <ShieldCheck size={11} className="shrink-0 text-blue-400" />}
+            {showSpeaking && (
+              <span className="shrink-0 text-[10px] font-medium text-emerald-400">Speaking</span>
             )}
           </div>
 
-          <div className="flex items-center gap-1">
-            <span className={`text-[10px] font-medium ${roleColor}`}>
-              {roleLabel}
-            </span>
-            <span
-              className={`text-[9px] ${
-                connectionState === "connected"
-                  ? "text-green-400/70"
-                  : connectionState === "connection-lost" ||
-                      connectionState === "reconnecting"
-                    ? "text-amber-400"
-                    : "text-red-400"
-              }`}
-              role="status"
-            >
-              · {connectionLabel}
-            </span>
-
-            {isForceMuted && (
-              <span className="text-[9px] text-red-400/70">
-                • Force muted
+          <div className="flex flex-wrap items-center gap-x-1.5 text-[10px] text-gray-500">
+            <span>{roleLabel}</span>
+            {isDebateRoom && member.side && (
+              <span className={member.side === "for" ? "text-emerald-300" : "text-rose-300"}>
+                · {member.side === "for" ? "For" : "Against"}
               </span>
             )}
-
+            {connectionState !== "connected" && (
+              <span
+                role="status"
+                className={connectionState === "disconnected" ? "text-red-400" : "text-amber-400"}
+              >
+                · {connectionLabel}
+              </span>
+            )}
+            {isForceMuted && <span className="text-red-400/80">· Muted by moderator</span>}
             {!isForceMuted && isMutedByMuteAll && (
-              <span className="text-[9px] text-orange-400/60">
-                • Muted by host
-              </span>
+              <span className="text-amber-400/80">· Muted by host</span>
             )}
           </div>
-          {isDebateRoom && member.side && (
-            <span className={`mt-1 inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
-              member.side === "for"
-                ? "bg-emerald-500/10 text-emerald-300"
-                : "bg-rose-500/10 text-rose-300"
-            }`}>
-              {member.side === "for" ? "For" : "Against"}
-            </span>
-          )}
-          {isDebateRoom && isSelf && member.side && (
-            <button
-              type="button"
-              onClick={() => {
-                const side = member.side;
-                if (side) void handleChangeSide(side);
-              }}
-              className="ml-2 text-[10px] font-medium text-violet-300 hover:text-violet-200"
-            >
-              Switch to {member.side === "for" ? "Against" : "For"}
-            </button>
-          )}
         </div>
 
-        {/* Right: actions + mic */}
-        <div className="flex items-center gap-1 flex-shrink-0">
-
-          {canModerate && (
-            <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity">
-              <button
-                type="button"
-                onClick={() => handleKick(member.id)}
-                className="p-1 rounded-md hover:bg-white/[0.08] text-gray-600 hover:text-orange-400 transition-colors"
-                title="Remove"
-              >
-                <UserMinus size={11} />
-              </button>
-
-              <button
-                type="button"
-                className="p-1 rounded-md hover:bg-white/[0.08] text-gray-600 hover:text-blue-400 transition-colors"
-                title="Report"
-              >
-                <Flag size={11} />
-              </button>
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={() => handleMuteToggle(member.id)}
-            disabled={!isSelf && !canModerate}
-            className={`p-1 rounded-md transition-all ${isSelf || canModerate
-              ? "cursor-pointer hover:bg-white/[0.08]"
-              : "cursor-default"
-              } ${isMuted
-                ? "text-red-400/60"
-                : "text-gray-400/80"
-              }`}
-            title={
-              isSelf
-                ? isMuted
-                  ? "Unmute yourself"
-                  : "Mute yourself"
-                : canModerate
-                  ? isForceMuted
-                    ? "Unmute member"
-                    : "Mute member"
-                  : isMuted
-                    ? "Muted"
-                    : "Unmuted"
-            }
+        <div className="flex shrink-0 items-center gap-1">
+          <span
+            role="img"
+            aria-label={isMuted ? "Microphone muted" : "Microphone on"}
+            title={isMuted ? "Microphone muted" : "Microphone on"}
+            className="flex h-7 w-7 items-center justify-center"
           >
-            {isMuted ? <MicOff size={11} /> : <Mic size={11} />}
-          </button>
+            {isMuted ? (
+              <MicOff size={13} className="text-red-400" />
+            ) : (
+              <Mic size={13} className="text-emerald-400" />
+            )}
+          </span>
+          {menuItems.length > 0 && (
+            <ActionMenu items={menuItems} label={`Actions for ${member.name}`} />
+          )}
         </div>
       </div>
     );
   };
 
+  const groupTitle = "mb-1.5 flex items-center gap-1.5 px-2.5 text-[10px] font-medium uppercase tracking-wider text-gray-500";
+
   return (
-    <div className="flex-1 overflow-y-auto px-2 py-3 space-y-4 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+    <div className="flex-1 space-y-4 overflow-y-auto px-2 py-3 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
       {isDebateRoom && (
-        <div className="mx-2 flex items-center justify-between rounded-lg border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-xs">
-          <span className="text-emerald-300">For · {debateCounts.for}</span>
-          <span className="text-rose-300">Against · {debateCounts.against}</span>
+        <div className="mx-2 grid grid-cols-2 divide-x divide-white/[0.06] rounded-lg border border-white/[0.07] bg-[#161616] text-xs">
+          <span className="px-3 py-2 text-emerald-300">For · {debateCounts.for}</span>
+          <span className="px-3 py-2 text-rose-300">Against · {debateCounts.against}</span>
         </div>
       )}
 
-      {/* Host */}
       {host.length > 0 && (
         <div>
-          <div className="flex items-center gap-1.5 px-3 mb-1.5">
-            <Crown
-              size={10}
-              className="text-amber-400/70"
-            />
-
-            <span className="text-[10px] font-bold uppercase tracking-widest text-amber-500/60">
-              Host
-            </span>
-          </div>
-
-          {host.map((m) =>
-            renderMember(
-              m,
-              "Host",
-              "text-amber-400"
-            )
-          )}
+          <h3 className={groupTitle}>Host</h3>
+          {host.map((m) => renderMember(m, "host"))}
         </div>
       )}
 
-      {/* Moderators */}
       {moderators.length > 0 && (
         <div>
-          <div className="flex items-center gap-1.5 px-3 mb-1.5">
-            <ShieldCheck
-              size={10}
-              className="text-blue-400/70"
-            />
-
-            <span className="text-[10px] font-bold uppercase tracking-widest text-blue-500/60">
-              Moderators
-            </span>
-          </div>
-
-          {moderators.map((m) =>
-            renderMember(
-              m,
-              "Moderator",
-              "text-blue-400"
-            )
-          )}
+          <h3 className={groupTitle}>Moderators · {moderators.length}</h3>
+          {moderators.map((m) => renderMember(m, "moderator"))}
         </div>
       )}
 
-      {/* Members */}
       {members.length > 0 && (
         <div>
-          <div className="flex items-center gap-1.5 px-3 mb-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-600">
-              Members · {members.length}
-            </span>
-          </div>
-
-          {members.map((m) =>
-            renderMember(
-              m,
-              "Member",
-              "text-gray-500"
-            )
-          )}
+          <h3 className={groupTitle}>Members · {members.length}</h3>
+          {members.map((m) => renderMember(m, "member"))}
         </div>
       )}
-
-      {/* AI Insights */}
-      <div className="mx-1 p-3 rounded-xl border border-dashed border-purple-500/15 bg-purple-500/3">
-        <div className="flex items-center gap-2 mb-1">
-          <Sparkles
-            size={12}
-            className="text-purple-400/40"
-          />
-
-          <span className="text-[10px] font-semibold text-purple-400/40 uppercase tracking-wider">
-            AI Insights
-          </span>
-
-          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/15 text-purple-400/50">
-            Soon
-          </span>
-        </div>
-
-        <p className="text-[10px] text-gray-700">
-          Participation scores, speaking time,
-          communication streaks and country badges
-          will appear here.
-        </p>
-      </div>
     </div>
   );
 }

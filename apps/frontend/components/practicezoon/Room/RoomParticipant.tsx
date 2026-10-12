@@ -1,32 +1,31 @@
 import React, { useEffect, useRef } from "react";
-import { RoomMember } from "@/types/room";
 import Image from "next/image";
 import { useParams } from "next/navigation";
 import {
-  Pin,
-  Volume2,
   Crown,
-  MicOff,
+  Eye,
   Mic,
+  MicOff,
+  Monitor,
+  MonitorUp,
   ShieldCheck,
-  UserX,
-  Flag,
-  UserMinus,
   ShieldPlus,
-  MoreHorizontal,
+  UserX,
   Video,
   VideoOff,
 } from "lucide-react";
+import { RoomMember } from "@/types/room";
 import { generateIdenticonAvatar } from "@/utils/generateAvatar";
 import { useAudio } from "@/context/AudioContext";
 import { useAppDispatch, useAppSelector } from "@/libs/hooks";
 import { removeUnMutedUser } from "@/libs/features/room/roomSlice";
 import { roomSocketManager } from "@/libs/socket";
 import VolumeIndicator from "./VolumeIndicator";
+import ActionMenu from "./ActionMenu";
+import type { MenuItem } from "./ActionMenu";
 
 interface RoomParticipantProps {
   member: RoomMember;
-  isLarge?: boolean;
   hostId: string;
   speakingUsers: string[];
   unMutedUsers: string[];
@@ -52,9 +51,31 @@ interface RoomParticipantProps {
   isDebateRoom?: boolean;
 }
 
+function Status({
+  label,
+  tone,
+  children,
+}: {
+  label: string;
+  tone: "on" | "off" | "alert";
+  children: React.ReactNode;
+}) {
+  const color =
+    tone === "on" ? "text-emerald-400" : tone === "alert" ? "text-red-400" : "text-gray-400";
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      title={label}
+      className={`flex h-6 w-6 items-center justify-center rounded-md ${color}`}
+    >
+      {children}
+    </span>
+  );
+}
+
 export default function RoomParticipant({
   member,
-  isLarge = false,
   hostId,
   speakingUsers,
   unMutedUsers,
@@ -80,77 +101,52 @@ export default function RoomParticipant({
 }: RoomParticipantProps) {
   const volume = useAppSelector((state) => state.room.volumeLevels[member.id] ?? 0);
   const connectionState = useAppSelector(
-    (state) =>
-      state.room.participantConnectionStates[member.id] ?? "connected",
+    (state) => state.room.participantConnectionStates[member.id] ?? "connected",
   );
-  const connectionStatus = {
-    connected: {
-      label: "Connected",
-      className: "text-green-400",
-      dotClassName: "bg-green-400",
-    },
-    "connection-lost": {
-      label: "Connection lost",
-      className: "text-amber-400",
-      dotClassName: "bg-amber-400 animate-pulse",
-    },
-    reconnecting: {
-      label: "Reconnecting...",
-      className: "text-amber-400",
-      dotClassName: "bg-amber-400 animate-pulse",
-    },
-    disconnected: {
-      label: "Disconnected",
-      className: "text-red-400",
-      dotClassName: "bg-red-400",
-    },
+  const connectionLabel = {
+    connected: "Connected",
+    "connection-lost": "Connection lost",
+    reconnecting: "Reconnecting…",
+    disconnected: "Disconnected",
   }[connectionState];
+  const connectionTone =
+    connectionState === "disconnected" ? "text-red-400" : "text-amber-400";
 
-  const avatarSvg = member.avatar || generateIdenticonAvatar(member.name, 60);
+  const avatarSvg = member.avatar ? null : generateIdenticonAvatar(member.name, 60);
 
   const { id } = useParams();
   const roomId = Array.isArray(id) ? (id[0] ?? "") : (id ?? "");
 
+  const isSelf = member.id === currentUserId;
   const isSpeaking = speakingUsers.includes(member.id);
   const isForceMuted =
     forceMutedUsers.includes(member.id) ||
     (muteAll && !muteAllExcludedUsers.includes(member.id));
-
   const isUnMuted = unMutedUsers.includes(member.id) && !isForceMuted;
+  const isActiveSpeaker = isSpeaking && isUnMuted;
 
   const isHost = member.id === hostId;
   const isModerator = moderatorIds.includes(member.id);
 
   const dispatch = useAppDispatch();
-
   const { forceMuteUser, forceUnmuteUser } = useAudio();
   const videoRef = useRef<HTMLVideoElement>(null);
-  const screenShareVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (!videoRef.current) return;
     videoRef.current.srcObject = videoStream;
   }, [videoStream]);
 
-  useEffect(() => {
-    if (!screenShareVideoRef.current) return;
-    screenShareVideoRef.current.srcObject = screenShareStream;
-  }, [screenShareStream]);
-
   const canModerate = (currentUserIsHost || currentUserIsModerator) && !isHost;
   const canKick =
-    canModerate &&
-    member.id !== currentUserId &&
-    (currentUserIsHost || !isModerator);
+    canModerate && !isSelf && (currentUserIsHost || !isModerator);
   const canHostOnly = currentUserIsHost && !isHost;
 
   const forceMuteHandler = () => {
     if (isForceMuted) {
       forceUnmuteUser(roomId, member.id);
     } else {
-      if (isUnMuted) {
-        dispatch(removeUnMutedUser(member.id));
-      }
+      if (isUnMuted) dispatch(removeUnMutedUser(member.id));
       forceMuteUser(roomId, member.id);
     }
   };
@@ -169,314 +165,217 @@ export default function RoomParticipant({
     });
   };
 
-  const roleBorderClass = isHost
-    ? "ring-amber-500/40"
-    : isModerator
-      ? "ring-blue-500/30"
-      : "";
+  const viewItems: MenuItem[] = [];
+  if (videoStream) {
+    viewItems.push({
+      type: "action",
+      id: "view-camera",
+      label: "View camera",
+      icon: Eye,
+      onSelect: () => onSelectCamera(member.id),
+    });
+  }
+  if (screenShareStream && !isSelf) {
+    viewItems.push({
+      type: "action",
+      id: "view-screen",
+      label: "View shared screen",
+      icon: Monitor,
+      onSelect: () => onSelectScreenShare(member.id),
+    });
+  }
 
-  const avatarBorderClass = isHost
-    ? "border-amber-500/40"
-    : isModerator
-      ? "border-blue-500/30"
-      : "border-white/10";
+  const selfItems: MenuItem[] = [];
+  if (isSelf) {
+    const blocked = !isVideoEnabled && (!cameraEnabled || cameraDisabled);
+    selfItems.push({
+      type: "toggle",
+      id: "own-camera",
+      label: "My camera",
+      icon: isVideoEnabled ? Video : VideoOff,
+      checked: isVideoEnabled,
+      disabled: blocked,
+      hint: blocked
+        ? !cameraEnabled
+          ? "Disabled by a moderator"
+          : "Disabled for you"
+        : undefined,
+      onChange: (next) => {
+        if (next) void onStartVideo();
+        else onStopVideo();
+      },
+    });
+  }
+
+  const modItems: MenuItem[] = [];
+  if (canModerate) {
+    modItems.push({ type: "heading", id: "mod-heading", text: "Moderation" });
+    if (!isSelf) {
+      modItems.push({
+        type: "toggle",
+        id: "camera-access",
+        label: "Camera access",
+        icon: Video,
+        checked: !cameraDisabled,
+        onChange: (next) => onToggleMemberCamera(next),
+      });
+    }
+    modItems.push({
+      type: "toggle",
+      id: "mute",
+      label: "Mute participant",
+      icon: MicOff,
+      checked: isForceMuted,
+      onChange: () => forceMuteHandler(),
+    });
+    if (canHostOnly) {
+      modItems.push({
+        type: "toggle",
+        id: "moderator",
+        label: "Moderator role",
+        icon: ShieldPlus,
+        checked: isModerator,
+        onChange: () => moderatorRoleHandler(),
+      });
+    }
+  }
+
+  const dangerItems: MenuItem[] = canKick
+    ? [
+        {
+          type: "action",
+          id: "kick",
+          label: "Remove from room",
+          icon: UserX,
+          danger: true,
+          onSelect: kickHandler,
+        },
+      ]
+    : [];
+
+  const menuItems = [viewItems, selfItems, modItems, dangerItems]
+    .filter((group) => group.length > 0)
+    .flatMap<MenuItem>((group, index) =>
+      index === 0 ? group : [{ type: "separator", id: `sep-${index}` }, ...group],
+    );
+
+  const avatarSize = compact ? "h-9 w-9" : "h-14 w-14 sm:h-16 sm:w-16";
+  const avatarBorder = "border-2 border-white/10";
 
   return (
     <div
-      className={`
-        relative rounded-2xl overflow-hidden group transition-all duration-300
-        ${compact ? "h-full w-[180px] min-w-[180px] aspect-auto" : isLarge ? "aspect-[16/9]" : "aspect-video"}
-        ${roleBorderClass ? `ring-1 ${roleBorderClass}` : "ring-1 ring-white/[0.06]"}
-      `}
-      style={{
-        background: "linear-gradient(135deg, rgba(22, 22, 22, 0.95) 0%, rgba(28, 28, 28, 0.95) 100%)",
-      }}
+      className={`group relative overflow-hidden rounded-xl bg-[#161616] ${
+        compact ? "h-full w-[168px] min-w-[168px]" : "aspect-video w-full"
+      } ${isActiveSpeaker ? "ring-2 ring-emerald-400" : "ring-1 ring-white/[0.07]"}`}
     >
-      {/* Subtle dot-grid texture */}
-      <div
-        className="absolute inset-0 opacity-[0.02] pointer-events-none"
-        style={{
-          backgroundImage: `radial-gradient(circle, #ffffff 1px, transparent 1px)`,
-          backgroundSize: "24px 24px",
-        }}
-      />
-
       {videoStream && (
         <button
           type="button"
           onClick={() => onSelectCamera(member.id)}
-          className="absolute inset-0 z-[1] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+          className="absolute inset-0 z-[1] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/70"
+          aria-label={`View ${member.name}'s camera`}
           title={`View ${member.name}'s camera`}
         >
           <video
             ref={videoRef}
             autoPlay
-            muted={member.id === currentUserId}
+            muted={isSelf}
             playsInline
-            className="absolute inset-0 w-full h-full object-cover"
+            className="absolute inset-0 h-full w-full object-cover"
           />
         </button>
       )}
 
-      {screenShareStream && member.id !== currentUserId && (
-        <button
-          type="button"
-          onClick={() => onSelectScreenShare(member.id)}
-          className="absolute bottom-3 right-3 z-10 w-24 aspect-video overflow-hidden rounded-lg border border-white/30 bg-black/80 shadow-lg transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-          title={`View ${member.name}'s screen share`}
-        >
-          <video
-            ref={screenShareVideoRef}
-            autoPlay
-            muted
-            playsInline
-            className="h-full w-full object-cover"
-          />
-          <span className="absolute bottom-0 left-0 right-0 bg-black/65 px-1.5 py-1 text-left text-[9px] font-medium text-white/90">
-            Screen
-          </span>
-        </button>
-      )}
-
-      {!videoStream && <div className="absolute inset-0 flex items-center justify-center">
-        {member.avatar ? (
-          <div
-            className={`relative rounded-full ${isSpeaking && isUnMuted
-                ? "ring-2 ring-white/60 animate-pulse"
-                : ""
-              }`}
-          >
+      {!videoStream && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          {member.avatar ? (
             <Image
               src={member.avatar}
               alt={member.name}
               width={150}
               height={150}
-              className={`rounded-full object-cover border-2
-                ${isLarge
-                  ? "w-28 h-28 sm:w-32 sm:h-32 lg:w-36 lg:h-36"
-                  : "w-16 h-16 sm:w-20 sm:h-20"
-                } ${avatarBorderClass}`}
+              className={`rounded-full object-cover ${avatarSize} ${avatarBorder}`}
             />
-          </div>
-        ) : (
-          <div
-            className={`relative rounded-full ${isSpeaking && isUnMuted
-                ? "ring-2 ring-white/60 animate-pulse"
-                : ""
-              }`}
-          >
+          ) : (
             <div
-              dangerouslySetInnerHTML={{ __html: avatarSvg }}
-              className={`rounded-full overflow-hidden border-2 flex items-center justify-center ${isLarge
-                  ? "w-28 h-28 sm:w-32 sm:h-32 lg:w-36 lg:h-36"
-                  : "w-16 h-16 sm:w-20 sm:h-20"
-                } ${avatarBorderClass}`}
+              dangerouslySetInnerHTML={{ __html: avatarSvg ?? "" }}
+              className={`flex items-center justify-center overflow-hidden rounded-full ${avatarSize} ${avatarBorder}`}
             />
-          </div>
-        )}
-      </div>}
-
-      <div className="absolute top-3 left-3 z-10">
-        {isUnMuted ? (
-          <div className="flex items-center gap-2">
-            <Mic
-              size={14}
-              strokeWidth={2.5}
-              className="text-gray-400"
-              aria-label="Microphone on"
-            />
-          </div>
-        ) : (
-          <MicOff
-            size={14}
-            strokeWidth={2.5}
-            className="text-red-400/70"
-            aria-label="Microphone muted"
-          />
-        )}
-      </div>
-
-      <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5">
-        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-          {member.id === currentUserId && (
-            <button
-              type="button"
-              disabled={
-                !isVideoEnabled && (!cameraEnabled || cameraDisabled)
-              }
-              onClick={isVideoEnabled ? onStopVideo : onStartVideo}
-              className={`p-1.5 rounded-lg backdrop-blur-sm border transition-all duration-150 ${
-                !isVideoEnabled && (!cameraEnabled || cameraDisabled)
-                  ? "bg-white/[0.04] border-white/[0.08] text-gray-600 cursor-not-allowed"
-                  : isVideoEnabled
-                    ? "bg-green-500/15 border-green-500/30 text-green-400"
-                    : "bg-black/50 border-white/[0.12] text-gray-400 hover:text-white hover:bg-black/70"
-              }`}
-              title={
-                !isVideoEnabled && !cameraEnabled
-                  ? "Camera disabled by room moderator"
-                  : !isVideoEnabled && cameraDisabled
-                    ? "Camera disabled for this member"
-                  : isVideoEnabled
-                    ? "Stop camera"
-                    : "Start camera"
-              }
-            >
-              {isVideoEnabled ? <Video size={12} /> : <VideoOff size={12} />}
-            </button>
-          )}
-          {canModerate && member.id !== currentUserId && (
-            <button
-              type="button"
-              onClick={() => onToggleMemberCamera(cameraDisabled)}
-              className={`p-1.5 rounded-lg backdrop-blur-sm border transition-all duration-150 ${
-                cameraDisabled
-                  ? "bg-green-500/15 border-green-500/30 text-green-400"
-                  : "bg-red-500/15 border-red-500/30 text-red-400"
-              }`}
-              title={cameraDisabled ? "Enable member camera" : "Disable member camera"}
-            >
-              {cameraDisabled ? <Video size={12} /> : <VideoOff size={12} />}
-            </button>
-          )}
-          <button
-            className="p-1.5 rounded-lg bg-black/50 backdrop-blur-sm border border-white/[0.12] text-gray-400 hover:text-white hover:bg-black/70 hover:border-white/20 transition-all duration-150"
-            title="Pin"
-          >
-            <Pin size={12} strokeWidth={2} />
-          </button>
-          <button
-            className="p-1.5 rounded-lg bg-black/50 backdrop-blur-sm border border-white/[0.12] text-gray-400 hover:text-white hover:bg-black/70 hover:border-white/20 transition-all duration-150"
-            title="Adjust volume"
-          >
-            <Volume2 size={12} strokeWidth={2} />
-          </button>
-
-          {canModerate && (
-            <button
-              type="button"
-              className={`
-                p-1.5 rounded-lg backdrop-blur-sm border transition-all duration-150
-                ${isForceMuted
-                  ? "bg-green-500/15 border-green-500/30 text-green-400 hover:text-green-300 hover:bg-green-500/25 hover:border-green-500/50"
-                  : "bg-amber-500/15 border-amber-500/30 text-amber-400 hover:text-amber-300 hover:bg-amber-500/25 hover:border-amber-500/50"
-                }
-              `}
-              title={isForceMuted ? "Unmute member" : "Mute member"}
-              onClick={forceMuteHandler}
-            >
-              {isForceMuted ? (
-                <MicOff size={12} strokeWidth={2} />
-              ) : (
-                <Mic size={12} strokeWidth={2} />
-              )}
-            </button>
-          )}
-
-          {canHostOnly && (
-            <>
-              <button
-                type="button"
-                onClick={moderatorRoleHandler}
-                className="p-1.5 rounded-lg bg-blue-500/15 backdrop-blur-sm border border-blue-500/30 text-blue-400 hover:text-blue-300 hover:bg-blue-500/25 hover:border-blue-500/50 transition-all duration-150"
-                title={isModerator ? "Remove moderator" : "Make moderator"}
-              >
-                {isModerator ? (
-                  <UserMinus size={12} strokeWidth={2} />
-                ) : (
-                  <ShieldPlus size={12} strokeWidth={2} />
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={kickHandler}
-                className="p-1.5 rounded-lg bg-red-500/15 backdrop-blur-sm border border-red-500/30 text-red-400 hover:text-red-300 hover:bg-red-500/25 hover:border-red-500/50 transition-all duration-150"
-                title="Remove from room"
-              >
-                <UserX size={12} strokeWidth={2} />
-              </button>
-            </>
-          )}
-          {!canHostOnly && canKick && (
-            <button
-              type="button"
-              onClick={kickHandler}
-              className="p-1.5 rounded-lg bg-red-500/15 backdrop-blur-sm border border-red-500/30 text-red-400 hover:text-red-300 hover:bg-red-500/25 hover:border-red-500/50 transition-all duration-150"
-              title="Remove from room"
-            >
-              <UserX size={12} strokeWidth={2} />
-            </button>
-          )}
-
-          {!canModerate && !canHostOnly && (
-            <>
-              <button
-                className="p-1.5 rounded-lg bg-black/50 backdrop-blur-sm border border-white/[0.12] text-gray-500 hover:text-orange-400 hover:border-orange-500/30 hover:bg-orange-500/15 transition-all duration-150"
-                title="Report user"
-              >
-                <Flag size={12} strokeWidth={2} />
-              </button>
-              <button
-                className="p-1.5 rounded-lg bg-black/50 backdrop-blur-sm border border-white/[0.12] text-gray-500 hover:text-gray-200 hover:bg-white/[0.08] hover:border-white/20 transition-all duration-150"
-                title="More options"
-              >
-                <MoreHorizontal size={12} strokeWidth={2} />
-              </button>
-            </>
           )}
         </div>
-      </div>
+      )}
 
-      <div className="absolute bottom-0 left-0 right-0 px-3 py-2.5 bg-gradient-to-t from-black/70 to-transparent">
-        <div className="flex items-end justify-between gap-2">
-          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="text-white text-xs font-semibold truncate">
-                  {member.name}
-                </span>
+      {screenShareStream &&
+        (isSelf ? (
+          <span className="absolute left-2 top-2 z-10 flex items-center gap-1.5 rounded-md bg-black/60 px-2 py-1 text-[11px] font-medium text-white">
+            <MonitorUp size={12} className="text-emerald-400" />
+            {compact ? "You" : "Sharing your screen"}
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onSelectScreenShare(member.id)}
+            title={`View ${member.name}'s screen`}
+            className="absolute left-2 top-2 z-10 flex items-center gap-1.5 rounded-md bg-black/60 px-2 py-1 text-[11px] font-medium text-white transition-colors hover:bg-black/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-500/60 motion-reduce:transition-none"
+          >
+            <MonitorUp size={12} className="text-emerald-400" />
+            {compact ? "Screen" : "Sharing screen · View"}
+          </button>
+        ))}
 
-                {isHost && (
-                  <Crown
-                    size={12}
-                    className="text-amber-400 flex-shrink-0"
-                    strokeWidth={2}
-                  />
-                )}
+      {menuItems.length > 0 && member.id !== currentUserId && (
+        <div className="absolute right-1.5 top-1.5 z-10">
+          <ActionMenu
+            items={menuItems}
+            label={`Actions for ${member.name}`}
+          />
+        </div>
+      )}
 
-                {isModerator && !isHost && (
-                  <ShieldCheck
-                    size={12}
-                    className="text-blue-400 flex-shrink-0"
-                    strokeWidth={2}
-                  />
-                )}
-                {isDebateRoom && member.side && (
-                  <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
-                    member.side === "for"
-                      ? "bg-emerald-500/15 text-emerald-300"
-                      : "bg-rose-500/15 text-rose-300"
-                  }`}>
-                    {member.side === "for" ? "For" : "Against"}
-                  </span>
-                )}
-              </div>
-              <span
-                className={`mt-0.5 flex items-center gap-1 text-[10px] ${connectionStatus.className}`}
-                role="status"
-              >
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${connectionStatus.dotClassName}`}
-                />
-                {connectionStatus.label}
-              </span>
-            </div>
+      <div className="absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-2 bg-transparent px-2.5 pb-2 pt-8">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="truncate text-xs font-medium text-white">
+              {member.name}
+              {isSelf && <span className="text-gray-400"> (You)</span>}
+            </span>
+            {isHost && <Crown size={12} className="shrink-0 text-amber-400" />}
+            {isModerator && !isHost && (
+              <ShieldCheck size={12} className="shrink-0 text-blue-400" />
+            )}
           </div>
 
-          {isSpeaking && isUnMuted && (
-            <div className="flex-shrink-0">
-              <VolumeIndicator volume={volume} />
-            </div>
+          {isDebateRoom && member.side && (
+            <span
+              className={`block text-[10px] font-medium ${
+                member.side === "for" ? "text-emerald-300" : "text-rose-300"
+              }`}
+            >
+              {member.side === "for" ? "For" : "Against"}
+            </span>
+          )}
+
+          {connectionState !== "connected" && (
+            <span
+              role="status"
+              className={`flex items-center gap-1 text-[10px] ${connectionTone}`}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-current" />
+              {connectionLabel}
+            </span>
+          )}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1">
+          {isActiveSpeaker && <VolumeIndicator volume={volume} />}
+          {isUnMuted ? (
+            <Status label="Microphone on" tone="on">
+              <Mic size={13} />
+            </Status>
+          ) : (
+            <Status label="Microphone muted" tone="alert">
+              <MicOff size={13} />
+            </Status>
           )}
         </div>
       </div>

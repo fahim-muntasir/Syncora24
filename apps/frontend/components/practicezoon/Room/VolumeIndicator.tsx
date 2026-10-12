@@ -5,45 +5,38 @@ interface VolumeIndicatorProps {
 }
 
 export default function VolumeIndicator({ volume }: VolumeIndicatorProps) {
-  const normalizedVolume = Math.max(0, Math.min(1, volume)); // 0-1 range
+  const normalizedVolume = Math.max(0, Math.min(1, volume));
 
-  const bars = useMemo(() => {
-    return [
+  const bars = useMemo(
+    () => [
       normalizedVolume > 0.12,
       normalizedVolume > 0.28,
       normalizedVolume > 0.45,
       normalizedVolume > 0.65,
       normalizedVolume > 0.85,
-    ];
-  }, [normalizedVolume]);
+    ],
+    [normalizedVolume],
+  );
 
-  const getBarHeight = (index: number, isActive: boolean) => {
-    const baseHeights = [6, 10, 14, 10, 6];
-    if (!isActive) return baseHeights[index];
-    
-    // Active bars grow based on volume
-    const scaleFactors = [1.2, 1.4, 1.8, 1.4, 1.2];
-    return Math.round(baseHeights[index] * scaleFactors[index]);
-  };
+  const baseHeights = [6, 10, 14, 10, 6];
+  const scaleFactors = [1.2, 1.4, 1.8, 1.4, 1.2];
 
   return (
     <div
-      className="flex items-center gap-1 h-4 px-1.5 py-0.5"
-      aria-label="Speaking volume indicator"
+      className="flex h-6 items-center gap-0.5 rounded-md bg-black/60 px-1.5"
+      role="img"
+      aria-label="Speaking"
+      title="Speaking"
     >
       {bars.map((active, index) => (
-        <div
+        <span
           key={index}
-          className={`rounded-full transition-all duration-75 ease-out ${
-            active
-              ? "bg-emerald-400 shadow-sm shadow-emerald-400/50"
-              : "bg-white/15"
+          className={`w-[2px] rounded-full transition-all duration-75 ease-out motion-reduce:transition-none ${
+            active ? "bg-emerald-400" : "bg-white/20"
           }`}
           style={{
-            width: "2px",
-            height: `${getBarHeight(index, active)}px`,
-            opacity: active ? 1 : 0.6,
-            filter: active ? "drop-shadow(0 0 2px rgba(52, 211, 153, 0.3))" : "none",
+            height: `${active ? Math.round(baseHeights[index] * scaleFactors[index]) : baseHeights[index]}px`,
+            maxHeight: 18,
           }}
         />
       ))}

@@ -3,67 +3,52 @@ import React from "react";
 export default function ControlButton({
   icon: Icon,
   active = false,
+  warn = false,
+  danger = false,
+  disabled = false,
   onClick,
   label,
-  danger = false,
 }: {
   icon: React.ComponentType<{ size: number }>;
   active?: boolean;
+  warn?: boolean;
+  danger?: boolean;
+  disabled?: boolean;
   onClick?: () => void;
   label?: string;
-  danger?: boolean;
 }) {
+  const tone = danger
+    ? "border-red-500/30 bg-red-500 text-white hover:bg-red-400"
+    : warn
+      ? "border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/15"
+      : active
+        ? "border-green-500/40 bg-green-500/10 text-green-400 hover:bg-green-500/15"
+        : "border-white/[0.08] bg-white/[0.04] text-gray-300 hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white";
+
   return (
     <button
+      type="button"
       onClick={onClick}
-      className="relative flex items-center justify-center group focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 rounded-2xl"
+      disabled={disabled}
+      aria-label={label}
+      className="group relative flex items-center justify-center rounded-xl focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-500/60"
     >
-      {/* Tooltip */}
       {label && (
-        <div
-          className="
-            pointer-events-none
-            absolute
-            bottom-full
-            mb-3
-            left-1/2
-            -translate-x-1/2
-            opacity-0
-            translate-y-1
-            group-hover:opacity-100
-            group-hover:translate-y-0
-            group-focus-visible:opacity-100
-            group-focus-visible:translate-y-0
-            transition-all
-            duration-200
-            z-50
-          "
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded-md border border-white/[0.08] bg-[#161616] px-2.5 py-1 text-[11px] font-medium text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none"
         >
-          <div className="relative whitespace-nowrap rounded-xl border border-white/[0.08] bg-[#161616]/95 backdrop-blur-xl px-3 py-1.5 shadow-2xl">
-            <span className="text-[11px] font-medium text-white">
-              {label}
-            </span>
-
-            {/* Arrow */}
-            <div className="absolute left-1/2 top-full -translate-x-1/2">
-              <div className="w-2.5 h-2.5 rotate-45 bg-[#161616] border-r border-b border-white/[0.08]" />
-            </div>
-          </div>
-        </div>
+          {label}
+        </span>
       )}
 
-      {/* Button */}
-      <div
-        className={`p-3.5 rounded-2xl border transition-all duration-200 active:scale-95 ${
-          danger
-            ? "bg-red-500/90 border-red-500/0 text-white hover:bg-red-500 hover:shadow-lg hover:shadow-red-500/25"
-            : active
-            ? "bg-green-500/15 border-green-500/30 text-green-400 hover:bg-green-500/25 hover:border-green-500/50"
-            : "bg-white/[0.05] border-white/[0.08] text-gray-400 hover:bg-white/[0.10] hover:border-white/[0.14] hover:text-white"
+      <span
+        className={`flex items-center justify-center rounded-xl border p-2.5 transition-colors duration-150 motion-reduce:transition-none sm:p-3.5 ${tone} ${
+          disabled ? "cursor-not-allowed opacity-50" : ""
         }`}
       >
         <Icon size={18} />
-      </div>
+      </span>
     </button>
   );
 }

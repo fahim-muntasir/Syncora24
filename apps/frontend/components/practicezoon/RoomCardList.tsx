@@ -77,8 +77,8 @@ export default function RoomCardList() {
         setRooms((prev) =>
           prev
             ? prev.map((room) =>
-                room.id === roomId ? { ...room, status: "ended" } : room,
-              )
+              room.id === roomId ? { ...room, status: "ended" } : room,
+            )
             : prev,
         );
       },
@@ -110,13 +110,13 @@ export default function RoomCardList() {
         setRooms((prev) =>
           prev
             ? prev.map((room) => {
-                if (room.id !== data.roomId) return room;
-                const exists = room.members.some(
-                  (m) => m.id === data.newMember.id,
-                );
-                if (exists) return room;
-                return { ...room, members: [...room.members, data.newMember] };
-              })
+              if (room.id !== data.roomId) return room;
+              const exists = room.members.some(
+                (m) => m.id === data.newMember.id,
+              );
+              if (exists) return room;
+              return { ...room, members: [...room.members, data.newMember] };
+            })
             : prev,
         );
       },
@@ -129,12 +129,12 @@ export default function RoomCardList() {
         setRooms((prev) =>
           prev
             ? prev.map((room) => {
-                if (room.id !== data.roomId) return room;
-                return {
-                  ...room,
-                  members: room.members.filter((m) => m.id !== data.memberId),
-                };
-              })
+              if (room.id !== data.roomId) return room;
+              return {
+                ...room,
+                members: room.members.filter((m) => m.id !== data.memberId),
+              };
+            })
             : prev,
         );
       },
@@ -216,14 +216,24 @@ export default function RoomCardList() {
   return (
     <div className="mt-8 md:mt-10">
       <div className="mb-5 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-medium text-white">Available rooms</h2>
+        <h2 className="text-sm font-semibold tracking-tight text-white">
+          Available rooms
+        </h2>
 
-        <span className="flex items-center gap-2 text-sm tabular-nums text-gray-500">
+        <div className="flex items-center gap-2 text-xs text-gray-400">
           {isFetching && (
-            <Loader size={14} className="animate-spin motion-reduce:animate-none" />
+            <Loader
+              size={13}
+              className="animate-spin motion-reduce:animate-none"
+            />
           )}
-          {filteredRooms.length} {filteredRooms.length === 1 ? "room" : "rooms"}
-        </span>
+
+          {filteredRooms.length > 0 && (
+            <span className="rounded-md border border-white/[0.07] bg-[#161616] px-2 py-1 font-medium tabular-nums">
+              {filteredRooms.length}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">

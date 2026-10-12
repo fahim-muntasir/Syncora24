@@ -1,46 +1,222 @@
+import React from "react";
 import {
-  UserPlus,
-  UserX,
-  MicOff,
+  AlertTriangle,
+  DoorOpen,
   Mic,
+  MicOff,
+  MonitorOff,
+  MonitorUp,
   ShieldCheck,
   ShieldOff,
-  VolumeX,
-  Volume2,
-  DoorOpen,
-  AlertTriangle,
+  UserPlus,
+  UserX,
   Video,
   VideoOff,
-  MonitorUp,
-  MonitorOff,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { RoomActivity } from "@/types/chat";
 
-export default function ActivityMessage({
-  activity,
-}: {
-  activity: RoomActivity;
-}) {
+const tones = {
+  good: "text-emerald-400/80",
+  neutral: "text-gray-500",
+  warn: "text-amber-400/80",
+  bad: "text-red-400/80",
+};
+
+type ActivityConfig = { icon: React.ReactNode; iconColor: string };
+
+const cfg = (Icon: LucideIcon, tone: keyof typeof tones): ActivityConfig => ({
+  icon: <Icon size={13} strokeWidth={1.8} />,
+  iconColor: tones[tone],
+});
+
+function getActivityConfig(activity: RoomActivity): ActivityConfig {
+  switch (activity.type) {
+    case "member-joined":
+      return cfg(UserPlus, "good");
+    case "member-side-changed":
+      return cfg(UserPlus, "neutral");
+    case "member-left":
+      return cfg(DoorOpen, "neutral");
+    case "member-kicked":
+      return cfg(UserX, "bad");
+    case "member-muted":
+      return cfg(MicOff, "warn");
+    case "member-unmuted":
+      return cfg(Mic, "good");
+    case "mute-all-enabled":
+      return cfg(VolumeX, "warn");
+    case "mute-all-disabled":
+      return cfg(Volume2, "neutral");
+    case "moderator-promoted":
+      return cfg(ShieldCheck, "good");
+    case "moderator-removed":
+      return cfg(ShieldOff, "neutral");
+    case "room-ended":
+      return cfg(AlertTriangle, "bad");
+    case "camera-started":
+      return cfg(Video, "good");
+    case "camera-stopped":
+      return cfg(VideoOff, "neutral");
+    case "microphone-started":
+      return cfg(Mic, "good");
+    case "microphone-stopped":
+      return cfg(MicOff, "neutral");
+    case "screen-share-started":
+      return cfg(MonitorUp, "good");
+    case "screen-share-stopped":
+      return cfg(MonitorOff, "neutral");
+    case "camera-permission-changed":
+      return cfg(activity.enabled ? Video : VideoOff, activity.enabled ? "good" : "warn");
+  }
+}
+
+const Name = ({ children }: { children: React.ReactNode }) => (
+  <span className="font-medium text-gray-300">{children}</span>
+);
+
+const Side = ({ side }: { side: "for" | "against" }) => (
+  <span className={side === "for" ? "text-emerald-300" : "text-rose-300"}>
+    {side === "for" ? "For" : "Against"}
+  </span>
+);
+
+function renderActivityText(activity: RoomActivity): React.ReactNode {
+  switch (activity.type) {
+    case "member-joined":
+      return (
+        <>
+          <Name>{activity.userName}</Name> joined the room
+          {activity.side && (
+            <>
+              {" "}for <Side side={activity.side} />
+            </>
+          )}
+        </>
+      );
+    case "member-side-changed":
+      return (
+        <>
+          <Name>{activity.userName}</Name> changed their position to{" "}
+          <Side side={activity.side} />
+        </>
+      );
+    case "member-left":
+      return (
+        <>
+          <Name>{activity.userName}</Name> left the room
+        </>
+      );
+    case "member-kicked":
+      return (
+        <>
+          <Name>{activity.userName}</Name> was removed by <Name>{activity.actorName}</Name>
+        </>
+      );
+    case "member-muted":
+      return (
+        <>
+          <Name>{activity.userName}</Name> was muted by <Name>{activity.actorName}</Name>
+        </>
+      );
+    case "member-unmuted":
+      return (
+        <>
+          <Name>{activity.userName}</Name> was unmuted by <Name>{activity.actorName}</Name>
+        </>
+      );
+    case "mute-all-enabled":
+      return (
+        <>
+          <Name>{activity.actorName}</Name> muted everyone
+        </>
+      );
+    case "mute-all-disabled":
+      return (
+        <>
+          <Name>{activity.actorName}</Name> unmuted everyone
+        </>
+      );
+    case "moderator-promoted":
+      return (
+        <>
+          <Name>{activity.userName}</Name> is now a moderator
+        </>
+      );
+    case "moderator-removed":
+      return (
+        <>
+          <Name>{activity.userName}</Name> is no longer a moderator
+        </>
+      );
+    case "room-ended":
+      return (
+        <>
+          <Name>{activity.actorName}</Name> ended the room
+        </>
+      );
+    case "camera-started":
+      return (
+        <>
+          <Name>{activity.userName}</Name> started their camera
+        </>
+      );
+    case "camera-stopped":
+      return (
+        <>
+          <Name>{activity.userName}</Name> stopped their camera
+        </>
+      );
+    case "microphone-started":
+      return (
+        <>
+          <Name>{activity.userName}</Name> turned on their microphone
+        </>
+      );
+    case "microphone-stopped":
+      return (
+        <>
+          <Name>{activity.userName}</Name> turned off their microphone
+        </>
+      );
+    case "screen-share-started":
+      return (
+        <>
+          <Name>{activity.userName}</Name> started sharing their screen
+        </>
+      );
+    case "screen-share-stopped":
+      return (
+        <>
+          <Name>{activity.userName}</Name> stopped sharing their screen
+        </>
+      );
+    case "camera-permission-changed":
+      return (
+        <>
+          <Name>{activity.actorName}</Name> {activity.enabled ? "enabled" : "disabled"} camera
+          access for <Name>{activity.scope === "room" ? "the room" : activity.userName}</Name>
+        </>
+      );
+  }
+}
+
+export default function ActivityMessage({ activity }: { activity: RoomActivity }) {
   const config = getActivityConfig(activity);
 
   return (
     <div className="flex items-center gap-2 px-1 py-0.5">
-      {/* Activity icon */}
-      <div
-        className={`flex items-center justify-center shrink-0 ${config.iconColor}`}
-      >
+      <div className={`flex shrink-0 items-center justify-center ${config.iconColor}`}>
         {config.icon}
       </div>
-
-      {/* Activity text */}
-      <p
-        className={`flex-1 text-[11px] leading-5 font-normal ${config.textColor}`}
-      >
+      <p className="flex-1 text-[11px] font-normal leading-5 text-gray-500">
         {renderActivityText(activity)}
       </p>
       <time
         dateTime={new Date(activity.timestamp).toISOString()}
-        className="shrink-0 text-[10px] text-gray-600"
+        className="shrink-0 text-[10px] tabular-nums text-gray-600"
       >
         {new Date(activity.timestamp).toLocaleTimeString([], {
           hour: "numeric",
@@ -49,337 +225,4 @@ export default function ActivityMessage({
       </time>
     </div>
   );
-}
-
-type ActivityConfig = {
-  icon: React.ReactNode;
-  iconColor: string;
-  textColor: string;
-};
-
-function getActivityConfig(
-  activity: RoomActivity
-): ActivityConfig {
-  switch (activity.type) {
-    case "member-joined":
-      return {
-        icon: <UserPlus size={13} strokeWidth={1.8} />,
-        iconColor: "text-emerald-500/70",
-        textColor: "text-gray-500",
-      };
-
-    case "member-side-changed":
-      return {
-        icon: <UserPlus size={13} strokeWidth={1.8} />,
-        iconColor: "text-violet-400/75",
-        textColor: "text-gray-500",
-      };
-
-    case "member-left":
-      return {
-        icon: <DoorOpen size={13} strokeWidth={1.8} />,
-        iconColor: "text-gray-500",
-        textColor: "text-gray-500",
-      };
-
-    case "member-kicked":
-      return {
-        icon: <UserX size={13} strokeWidth={1.8} />,
-        iconColor: "text-red-400/80",
-        textColor: "text-gray-500",
-      };
-
-    case "member-muted":
-      return {
-        icon: <MicOff size={13} strokeWidth={1.8} />,
-        iconColor: "text-amber-400/80",
-        textColor: "text-gray-500",
-      };
-
-    case "member-unmuted":
-      return {
-        icon: <Mic size={13} strokeWidth={1.8} />,
-        iconColor: "text-emerald-400/70",
-        textColor: "text-gray-500",
-      };
-
-    case "mute-all-enabled":
-      return {
-        icon: <VolumeX size={13} strokeWidth={1.8} />,
-        iconColor: "text-blue-400/75",
-        textColor: "text-gray-500",
-      };
-
-    case "mute-all-disabled":
-      return {
-        icon: <Volume2 size={13} strokeWidth={1.8} />,
-        iconColor: "text-gray-500",
-        textColor: "text-gray-500",
-      };
-
-    case "moderator-promoted":
-      return {
-        icon: <ShieldCheck size={13} strokeWidth={1.8} />,
-        iconColor: "text-violet-400/75",
-        textColor: "text-gray-500",
-      };
-
-    case "moderator-removed":
-      return {
-        icon: <ShieldOff size={13} strokeWidth={1.8} />,
-        iconColor: "text-gray-500",
-        textColor: "text-gray-500",
-      };
-
-    case "room-ended":
-      return {
-        icon: <AlertTriangle size={13} strokeWidth={1.8} />,
-        iconColor: "text-red-400/80",
-        textColor: "text-gray-500",
-      };
-
-    case "camera-started":
-      return {
-        icon: <Video size={13} strokeWidth={1.8} />,
-        iconColor: "text-emerald-400/70",
-        textColor: "text-gray-500",
-      };
-
-    case "camera-stopped":
-      return {
-        icon: <VideoOff size={13} strokeWidth={1.8} />,
-        iconColor: "text-gray-500",
-        textColor: "text-gray-500",
-      };
-
-    case "microphone-started":
-      return {
-        icon: <Mic size={13} strokeWidth={1.8} />,
-        iconColor: "text-emerald-400/70",
-        textColor: "text-gray-500",
-      };
-
-    case "microphone-stopped":
-      return {
-        icon: <MicOff size={13} strokeWidth={1.8} />,
-        iconColor: "text-gray-500",
-        textColor: "text-gray-500",
-      };
-
-    case "screen-share-started":
-      return {
-        icon: <MonitorUp size={13} strokeWidth={1.8} />,
-        iconColor: "text-emerald-400/70",
-        textColor: "text-gray-500",
-      };
-
-    case "screen-share-stopped":
-      return {
-        icon: <MonitorOff size={13} strokeWidth={1.8} />,
-        iconColor: "text-gray-500",
-        textColor: "text-gray-500",
-      };
-
-    case "camera-permission-changed":
-      return {
-        icon: activity.enabled
-          ? <Video size={13} strokeWidth={1.8} />
-          : <VideoOff size={13} strokeWidth={1.8} />,
-        iconColor: activity.enabled ? "text-emerald-400/70" : "text-amber-400/80",
-        textColor: "text-gray-500",
-      };
-  }
-}
-
-function renderActivityText(
-  activity: RoomActivity
-): React.ReactNode {
-  switch (activity.type) {
-    case "member-joined":
-      return (
-        <>
-          <span className="text-gray-400 font-medium">
-            {activity.userName}
-          </span>{" "}
-          joined the room
-          {activity.side && (
-            <>
-              {" "}for{" "}
-              <span className={activity.side === "for" ? "text-emerald-300" : "text-rose-300"}>
-                {activity.side === "for" ? "For" : "Against"}
-              </span>
-            </>
-          )}
-        </>
-      );
-
-    case "member-side-changed":
-      return (
-        <>
-          <span className="text-gray-400 font-medium">{activity.userName}</span>{" "}
-          changed their position to{" "}
-          <span className={activity.side === "for" ? "text-emerald-300" : "text-rose-300"}>
-            {activity.side === "for" ? "For" : "Against"}
-          </span>
-        </>
-      );
-
-    case "member-left":
-      return (
-        <>
-          <span className="text-gray-400 font-medium">
-            {activity.userName}
-          </span>{" "}
-          left the room
-        </>
-      );
-
-    case "member-kicked":
-      return (
-        <>
-          <span className="text-red-400/80 font-medium">
-            {activity.userName}
-          </span>{" "}
-          was kicked by{" "}
-          <span className="text-gray-400 font-medium">
-            {activity.actorName}
-          </span>
-        </>
-      );
-
-    case "member-muted":
-      return (
-        <>
-          <span className="text-amber-400/80 font-medium">
-            {activity.userName}
-          </span>{" "}
-          was muted by{" "}
-          <span className="text-gray-400 font-medium">
-            {activity.actorName}
-          </span>
-        </>
-      );
-
-    case "member-unmuted":
-      return (
-        <>
-          <span className="text-emerald-400/70 font-medium">
-            {activity.userName}
-          </span>{" "}
-          was unmuted by{" "}
-          <span className="text-gray-400 font-medium">
-            {activity.actorName}
-          </span>
-        </>
-      );
-
-    case "mute-all-enabled":
-      return (
-        <>
-          <span className="text-gray-400 font-medium">
-            {activity.actorName}
-          </span>{" "}
-          enabled mute all
-        </>
-      );
-
-    case "mute-all-disabled":
-      return (
-        <>
-          <span className="text-gray-400 font-medium">
-            {activity.actorName}
-          </span>{" "}
-          disabled mute all
-        </>
-      );
-
-    case "moderator-promoted":
-      return (
-        <>
-          <span className="text-violet-400/80 font-medium">
-            {activity.userName}
-          </span>{" "}
-          is now a moderator
-        </>
-      );
-
-    case "moderator-removed":
-      return (
-        <>
-          <span className="text-gray-400 font-medium">
-            {activity.userName}
-          </span>{" "}
-          is no longer a moderator
-        </>
-      );
-
-    case "room-ended":
-      return (
-        <>
-          <span className="text-red-400/80 font-medium">
-            {activity.actorName}
-          </span>{" "}
-          ended the room
-        </>
-      );
-
-    case "camera-started":
-      return (
-        <>
-          <span className="text-gray-400 font-medium">{activity.userName}</span>{" "}
-          started their camera
-        </>
-      );
-
-    case "camera-stopped":
-      return (
-        <>
-          <span className="text-gray-400 font-medium">{activity.userName}</span>{" "}
-          stopped their camera
-        </>
-      );
-
-    case "microphone-started":
-      return (
-        <>
-          <span className="text-gray-400 font-medium">{activity.userName}</span>{" "}
-          turned on their microphone
-        </>
-      );
-
-    case "microphone-stopped":
-      return (
-        <>
-          <span className="text-gray-400 font-medium">{activity.userName}</span>{" "}
-          turned off their microphone
-        </>
-      );
-
-    case "screen-share-started":
-      return (
-        <>
-          <span className="text-gray-400 font-medium">{activity.userName}</span>{" "}
-          started sharing their screen
-        </>
-      );
-
-    case "screen-share-stopped":
-      return (
-        <>
-          <span className="text-gray-400 font-medium">{activity.userName}</span>{" "}
-          stopped sharing their screen
-        </>
-      );
-
-    case "camera-permission-changed":
-      return (
-        <>
-          <span className="text-gray-400 font-medium">{activity.actorName}</span>{" "}
-          {activity.enabled ? "enabled" : "disabled"} camera access for{" "}
-          <span className="text-gray-400 font-medium">
-            {activity.scope === "room" ? "the room" : activity.userName}
-          </span>
-        </>
-      );
-  }
 }
