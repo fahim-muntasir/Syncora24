@@ -73,6 +73,7 @@ export default function RoomLayout({
   onLeaveRoom,
   selectScreenShare,
   selectCamera,
+  closeMediaView,
 }: {
   room: RoomType | null;
   layout: "grid" | "spotlight";
@@ -93,6 +94,7 @@ export default function RoomLayout({
   onLeaveRoom: () => void;
   selectScreenShare: (userId: string) => void;
   selectCamera: (userId: string) => void;
+  closeMediaView: () => void;
 }) {
   const currentUser = useAppSelector((state) => state.auth.user);
   const unMutedUsers = useAppSelector((state) => state.room.unMutedUsers);
@@ -123,7 +125,7 @@ export default function RoomLayout({
   const showStage = view === "stage" && hasStage;
 
   useEffect(() => {
-    if (selectedScreenShareOwnerId || selectedCameraOwnerId) setView("stage");
+    setView(selectedScreenShareOwnerId || selectedCameraOwnerId ? "stage" : "overview");
   }, [selectedScreenShareOwnerId, selectedCameraOwnerId]);
 
   useEffect(() => {
@@ -132,11 +134,12 @@ export default function RoomLayout({
       if (event.key !== "Escape") return;
       const target = event.target as HTMLElement | null;
       if (target?.closest('input, textarea, [role="menu"]')) return;
+      closeMediaView();
       setView("overview");
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [showStage]);
+  }, [showStage, closeMediaView]);
 
   const handleSelectCamera = useCallback(
     (userId: string) => {
@@ -191,7 +194,10 @@ export default function RoomLayout({
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] px-3 py-2 sm:px-4">
               <button
                 type="button"
-                onClick={() => setView("overview")}
+                onClick={() => {
+                  closeMediaView();
+                  setView("overview");
+                }}
                 className="flex items-center gap-2 rounded-lg border border-white/[0.08] px-3 py-1.5 text-sm text-gray-300 transition-colors hover:border-white/[0.16] hover:bg-white/[0.04] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-500/60 motion-reduce:transition-none"
               >
                 <ArrowLeft size={14} />
@@ -205,12 +211,13 @@ export default function RoomLayout({
             <div className="flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-4">
               <div
                 className={`grid min-h-0 flex-1 gap-3 ${selectedScreenShareStream && selectedCameraStream
-                    ? "grid-rows-[minmax(0,1fr)_minmax(0,0.45fr)] lg:grid-cols-[minmax(0,1fr)_minmax(200px,0.3fr)] lg:grid-rows-none"
-                    : ""
+                  ? "grid-rows-[minmax(0,1fr)_minmax(0,0.45fr)] lg:grid-cols-[minmax(0,1fr)_minmax(200px,0.3fr)] lg:grid-rows-none"
+                  : ""
                   }`}
               >
                 {selectedScreenShareStream && (
                   <StagePanel
+                    key={`screen-${selectedScreenShareOwnerId}`}
                     stream={selectedScreenShareStream}
                     muted={selectedScreenShareOwnerId === currentUserId}
                     label={
@@ -222,6 +229,7 @@ export default function RoomLayout({
                 )}
                 {selectedCameraStream && (
                   <StagePanel
+                    key={`camera-${selectedCameraOwnerId}`}
                     stream={selectedCameraStream}
                     muted={selectedCameraOwnerId === currentUserId}
                     label={
