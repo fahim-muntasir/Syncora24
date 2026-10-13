@@ -1,4 +1,3 @@
-// libs/socket/SocketManager.ts
 import { io, Socket } from "socket.io-client";
 
 type EventHandler = (...args: unknown[]) => void;

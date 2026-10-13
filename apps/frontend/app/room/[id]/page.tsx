@@ -127,6 +127,7 @@ export default function VideoConference() {
     stopScreenShare,
     selectScreenShare,
     selectCamera,
+    closeMediaView,
     // isScreenSharing,
   } = useRoomSocket({
     roomId,
@@ -333,6 +334,7 @@ export default function VideoConference() {
             }}
             selectScreenShare={selectScreenShare}
             selectCamera={selectCamera}
+            closeMediaView={closeMediaView}
           />
         </div>
       )}

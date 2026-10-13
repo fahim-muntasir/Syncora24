@@ -13,8 +13,14 @@ function StreamVideo({
 
   useEffect(() => {
     const element = videoRef.current;
-    if (!element || element.srcObject === stream) return;
-    element.srcObject = stream;
+    if (!element) return;
+    if (element.srcObject !== stream) element.srcObject = stream;
+
+    // Detach when the stream changes or the view closes.
+    return () => {
+      element.pause();
+      element.srcObject = null;
+    };
   }, [stream]);
 
   return (

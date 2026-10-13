@@ -33,6 +33,7 @@ export class PeerManager {
   private signalingQueues: Map<string, Promise<void>> = new Map();
   private screenShareTrackIds = new Set<string>();
   private restartingPeers = new Set<string>();
+  private needsRenegotiation = new Set<string>();
 
   constructor(
     private readonly roomId: string, 
@@ -156,7 +157,11 @@ export class PeerManager {
   async createOffer(socketId: string): Promise<void> {
     await this.enqueueSignaling(socketId, async () => {
       const pc = this.peers.get(socketId);
-      if (!pc || pc.signalingState !== "stable") return;
+      if (!pc) return;
+      if (pc.signalingState !== "stable") {
+        this.needsRenegotiation.add(socketId);
+        return;
+      }
 
       try {
         const offer = await pc.createOffer({
@@ -170,6 +175,11 @@ export class PeerManager {
         console.error(`[PeerManager] createOffer failed for ${socketId}:`, err);
       }
     });
+  }
+
+  private flushPendingRenegotiation(socketId: string): void {
+    if (!this.needsRenegotiation.delete(socketId)) return;
+    void this.createOffer(socketId);
   }
 
   private restartIce(socketId: string): void {
@@ -239,6 +249,7 @@ export class PeerManager {
         await pc.setLocalDescription(answer);
         roomSocketManager.emit("answer", { to: socketId, answer });
         console.log(`[PeerManager] Sent answer to ${socketId}`);
+        this.flushPendingRenegotiation(socketId);
       } catch (err) {
         console.error(`[PeerManager] handleOffer failed for ${socketId}:`, err);
       }
@@ -263,6 +274,7 @@ export class PeerManager {
         await pc.setRemoteDescription(new RTCSessionDescription(answer));
         await this.flushIceCandidates(socketId);
         console.log(`[PeerManager] Set remote answer from ${socketId}`);
+        this.flushPendingRenegotiation(socketId);
       } catch (err) {
         console.error(`[PeerManager] handleAnswer failed for ${socketId}:`, err);
       }
@@ -433,6 +445,7 @@ export class PeerManager {
     this.iceCandidateBuffer.delete(socketId);
     this.signalingQueues.delete(socketId);
     this.restartingPeers.delete(socketId);
+    this.needsRenegotiation.delete(socketId);
   }
 
   closeAll(): void {

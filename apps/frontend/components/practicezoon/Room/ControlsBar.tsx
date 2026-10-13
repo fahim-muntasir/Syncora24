@@ -58,7 +58,13 @@ export default function ControlsBar({
           icon={isVideoEnabled ? Video : VideoOff}
           active={isVideoEnabled}
           disabled={cameraBlocked}
-          onClick={isVideoEnabled ? onStopVideo : canUseCamera ? onStartVideo : undefined}
+          onClick={
+            isVideoEnabled
+              ? () => onStopVideo()
+              : canUseCamera
+                ? () => void onStartVideo()
+                : undefined
+          }
           label={
             isVideoEnabled
               ? "Stop video"
@@ -77,7 +83,11 @@ export default function ControlsBar({
         <ControlButton
           icon={MonitorUp}
           active={isScreenSharing}
-          onClick={isScreenSharing ? onStopScreenShare : onStartScreenShare}
+          onClick={
+            isScreenSharing
+              ? () => onStopScreenShare?.()
+              : () => void onStartScreenShare?.()
+          }
           label={isScreenSharing ? "Stop sharing" : "Share screen"}
         />
 

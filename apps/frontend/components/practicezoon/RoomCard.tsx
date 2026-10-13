@@ -4,34 +4,11 @@ import Image from "next/image";
 import { Users, Globe2, ArrowRight, Scale, MessageCircle } from "lucide-react";
 import { RoomType } from "@/types/room";
 import { generateIdenticonAvatar } from "@/utils/generateAvatar";
+import LevelMeter from "@/components/common/Room/LevelMeter";
 
-const LEVELS = ["Beginner", "Intermediate", "Advanced", "Native"];
-const BAR_HEIGHTS = [5, 7, 9, 11];
 const MAX_TILES = 5;
 
 type Member = RoomType["members"][number];
-
-function LevelMeter({ level }: { level: string }) {
-  const index = LEVELS.indexOf(level);
-  const filled = (index === -1 ? 0 : index) + 1;
-
-  return (
-    <span className="flex items-center gap-2 text-gray-300">
-      <span className="flex items-end gap-[2px]" aria-hidden="true">
-        {BAR_HEIGHTS.map((height, i) => (
-          <span
-            key={i}
-            style={{ height }}
-            className={`w-[3px] rounded-[1px] ${
-              i < filled ? "bg-green-400" : "bg-white/[0.14]"
-            }`}
-          />
-        ))}
-      </span>
-      {level}
-    </span>
-  );
-}
 
 function getTileSize(maxParticipants: number, isUnlimited: boolean) {
   if (isUnlimited) return "w-12 h-12";

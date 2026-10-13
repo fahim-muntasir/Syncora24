@@ -66,8 +66,12 @@ export interface UseRoomSocketReturn {
   stopScreenShare: () => void;
   selectScreenShare: (userId: string) => void;
   selectCamera: (userId: string) => void;
+  closeMediaView: () => void;
   isScreenSharing: boolean;
 }
+
+// Only ONE media view (a camera OR a screen share) can be open per viewer.
+type ActiveMedia = { kind: "camera" | "screen"; ownerId: string } | null;
 
 export function useRoomSocket({
   roomId,
@@ -104,18 +108,95 @@ export function useRoomSocket({
   const [localVideoStream, setLocalVideoStream] = useState<MediaStream | null>(null);
   const [remoteVideoStreams, setRemoteVideoStreams] = useState<Record<string, MediaStream>>({});
   const [screenShareStreams, setScreenShareStreams] = useState<Record<string, MediaStream>>({});
-  const [selectedScreenShareOwnerId, setSelectedScreenShareOwnerId] = useState<string | null>(null);
-  const [selectedCameraOwnerId, setSelectedCameraOwnerId] = useState<string | null>(null);
+  const [activeMedia, setActiveMedia] = useState<ActiveMedia>(null);
   const [isVideoEnabled, setIsVideoEnabled] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+
+  // Mirrors so event callbacks can read the latest streams without re-subscribing.
+  const remoteVideoStreamsRef = useRef<Record<string, MediaStream>>({});
+  const screenShareStreamsRef = useRef<Record<string, MediaStream>>({});
+  useEffect(() => {
+    remoteVideoStreamsRef.current = remoteVideoStreams;
+  }, [remoteVideoStreams]);
+  useEffect(() => {
+    screenShareStreamsRef.current = screenShareStreams;
+  }, [screenShareStreams]);
+
+  const selectedScreenShareOwnerId =
+    activeMedia?.kind === "screen" ? activeMedia.ownerId : null;
+  const selectedCameraOwnerId =
+    activeMedia?.kind === "camera" ? activeMedia.ownerId : null;
+
+  // ── Active media helpers ────────────────────────────────────────────────────
+  const clearActiveMedia = useCallback(
+    (kind: "camera" | "screen", ownerId: string) => {
+      setActiveMedia((previous) =>
+        previous && previous.kind === kind && previous.ownerId === ownerId
+          ? null
+          : previous,
+      );
+    },
+    [],
+  );
+
+  const removeRemoteCamera = useCallback(
+    (userId: string) => {
+      setRemoteVideoStreams((previous) => {
+        if (!(userId in previous)) return previous;
+        const next = { ...previous };
+        delete next[userId];
+        return next;
+      });
+      clearActiveMedia("camera", userId);
+    },
+    [clearActiveMedia],
+  );
+
+  const removeRemoteScreenShare = useCallback(
+    (userId: string) => {
+      activeScreenShareUsersRef.current.delete(userId);
+      screenShareStreamIdsRef.current.delete(userId);
+      setScreenShareStreams((previous) => {
+        if (!(userId in previous)) return previous;
+        const next = { ...previous };
+        delete next[userId];
+        return next;
+      });
+      clearActiveMedia("screen", userId);
+    },
+    [clearActiveMedia],
+  );
+
+  const registerRemoteScreenShare = useCallback(
+    (userId: string, stream: MediaStream) => {
+      // If this stream was first classified as a camera (track arrived before
+      // the screen-share-state event), move it out of the camera list.
+      if (remoteVideoStreamsRef.current[userId]?.id === stream.id) {
+        removeRemoteCamera(userId);
+      }
+
+      setScreenShareStreams((previous) =>
+        previous[userId] === stream ? previous : { ...previous, [userId]: stream },
+      );
+
+      stream.getVideoTracks().forEach((track) => {
+        track.onended = () => {
+          if (screenShareStreamsRef.current[userId] === stream) {
+            removeRemoteScreenShare(userId);
+          }
+        };
+      });
+    },
+    [removeRemoteCamera, removeRemoteScreenShare],
+  );
+
   const clearPeerState = useCallback(() => {
     socketToUserRef.current.clear();
     activeScreenShareUsersRef.current.clear();
     screenShareStreamIdsRef.current.clear();
     setRemoteVideoStreams({});
     setScreenShareStreams({});
-    setSelectedScreenShareOwnerId(null);
-    setSelectedCameraOwnerId(null);
+    setActiveMedia(null);
   }, []);
 
   const removeRemoteParticipant = useCallback(
@@ -129,25 +210,10 @@ export function useRoomSocket({
         peerManagerRef.current?.closeConnection(socketId);
       }
 
-      activeScreenShareUsersRef.current.delete(userId);
-      screenShareStreamIdsRef.current.delete(userId);
-      setRemoteVideoStreams((previous) => {
-        if (!(userId in previous)) return previous;
-        const next = { ...previous };
-        delete next[userId];
-        return next;
-      });
-      setScreenShareStreams((previous) => {
-        if (!(userId in previous)) return previous;
-        const next = { ...previous };
-        delete next[userId];
-        return next;
-      });
-      setSelectedScreenShareOwnerId((selected) =>
-        selected === userId ? null : selected,
-      );
-      setSelectedCameraOwnerId((selected) =>
-        selected === userId ? null : selected,
+      removeRemoteCamera(userId);
+      removeRemoteScreenShare(userId);
+      setActiveMedia((previous) =>
+        previous?.ownerId === userId ? null : previous,
       );
 
       dispatch(removeVolumeLevel(userId));
@@ -155,7 +221,7 @@ export function useRoomSocket({
       dispatch(removeSpeakingUser(userId));
       dispatch(removeParticipantConnectionState(userId));
     },
-    [dispatch],
+    [dispatch, removeRemoteCamera, removeRemoteScreenShare],
   );
 
   const getLocalMediaStream = useCallback(() => {
@@ -175,59 +241,79 @@ export function useRoomSocket({
     );
   }, [getLocalMediaStream]);
 
-  const stopVideo = useCallback((emitActivity = true) => {
-    const wasVideoEnabled = videoStreamRef.current !== null;
-    videoStreamRef.current?.getTracks().forEach((track) => track.stop());
-    videoStreamRef.current = null;
-    setLocalVideoStream(null);
-    setIsVideoEnabled(false);
-    setSelectedCameraOwnerId((selected) =>
-      selected === currentUserId ? null : selected,
-    );
-    if (roomId) {
-      roomSocketManager.emit("camera-state", {
-        roomId,
-        cameraEnabled: false,
-        activity: emitActivity && wasVideoEnabled,
-      });
-    }
-    void peerManagerRef.current?.removeTracksByKind("video");
-  }, [roomId, currentUserId]);
+  // NOTE: accepts `unknown` because this function is also used as a click
+  // handler; a click event must never end up in a socket payload.
+  const stopVideo = useCallback(
+    (emitActivityArg: unknown = true) => {
+      const emitActivity =
+        typeof emitActivityArg === "boolean" ? emitActivityArg : true;
+      const wasVideoEnabled = videoStreamRef.current !== null;
+      videoStreamRef.current?.getTracks().forEach((track) => track.stop());
+      videoStreamRef.current = null;
+      setLocalVideoStream(null);
+      setIsVideoEnabled(false);
+      if (currentUserId) clearActiveMedia("camera", currentUserId);
+      if (roomId) {
+        roomSocketManager.emit("camera-state", {
+          roomId,
+          cameraEnabled: false,
+          activity: emitActivity && wasVideoEnabled,
+        });
+      }
+      void peerManagerRef.current?.removeTracksByKind("video");
+    },
+    [roomId, currentUserId, clearActiveMedia],
+  );
 
-  const stopScreenShare = useCallback((activity = true) => {
-    if (stoppingScreenShareRef.current) return;
-    stoppingScreenShareRef.current = true;
+  const stopScreenShare = useCallback(
+    (activityArg?: unknown) => {
+      // Same protection as above: only a real boolean is ever sent.
+      const activity = typeof activityArg === "boolean" ? activityArg : true;
 
-    const ownerId = screenShareOwnerRef.current ?? currentUserId;
-    screenShareStreamRef.current?.getTracks().forEach((track) => {
-      track.onended = null;
-      track.stop();
-    });
-    screenShareStreamRef.current = null;
-    screenShareOwnerRef.current = null;
-    setIsScreenSharing(false);
-    setScreenShareStreams((previous) => {
-      const next = { ...previous };
-      if (ownerId) delete next[ownerId];
-      return next;
-    });
-    if (ownerId && roomId && currentUserId === ownerId) {
-      roomSocketManager.emit("screen-share-state", {
-        roomId,
-        sharing: false,
-        activity,
-      });
-    }
-    activeScreenShareUsersRef.current.delete(ownerId ?? "");
-    if (ownerId) {
-      screenShareStreamIdsRef.current.delete(ownerId);
-    }
-    setSelectedScreenShareOwnerId((selected) =>
-      selected === ownerId ? null : selected,
-    );
-    void peerManagerRef.current?.removeScreenShareTracks();
-    stoppingScreenShareRef.current = false;
-  }, [currentUserId, roomId]);
+      if (stoppingScreenShareRef.current) return;
+      stoppingScreenShareRef.current = true;
+
+      try {
+        const ownerId = screenShareOwnerRef.current ?? currentUserId;
+        const stream = screenShareStreamRef.current;
+
+        // Clear refs first so re-entrant calls (track.onended) are harmless.
+        screenShareStreamRef.current = null;
+        screenShareOwnerRef.current = null;
+
+        stream?.getTracks().forEach((track) => {
+          track.onended = null;
+          track.stop();
+        });
+
+        setIsScreenSharing(false);
+        if (ownerId) {
+          setScreenShareStreams((previous) => {
+            if (!(ownerId in previous)) return previous;
+            const next = { ...previous };
+            delete next[ownerId];
+            return next;
+          });
+          activeScreenShareUsersRef.current.delete(ownerId);
+          screenShareStreamIdsRef.current.delete(ownerId);
+          clearActiveMedia("screen", ownerId);
+        }
+
+        if (stream && ownerId && roomId && currentUserId === ownerId) {
+          roomSocketManager.emit("screen-share-state", {
+            roomId,
+            sharing: false,
+            activity,
+          });
+        }
+
+        void peerManagerRef.current?.removeScreenShareTracks();
+      } finally {
+        stoppingScreenShareRef.current = false;
+      }
+    },
+    [currentUserId, roomId, clearActiveMedia],
+  );
 
   const startScreenShare = useCallback(async () => {
     if (!roomId || !currentUserId || screenShareStreamRef.current) {
@@ -238,6 +324,12 @@ export function useRoomSocket({
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
       });
+
+      // A second start could have won the race while the picker was open.
+      if (screenShareStreamRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
 
       stream.getVideoTracks().forEach((track) => {
         track.contentHint = "detail";
@@ -253,7 +345,6 @@ export function useRoomSocket({
         ...previous,
         [currentUserId]: stream,
       }));
-      setSelectedScreenShareOwnerId(currentUserId);
       activeScreenShareUsersRef.current.add(currentUserId);
       setIsScreenSharing(true);
       roomSocketManager.emit("screen-share-state", {
@@ -272,13 +363,36 @@ export function useRoomSocket({
     }
   }, [currentUserId, roomId, stopScreenShare]);
 
+  // Selecting any media replaces the previous one -> only one view at a time.
   const selectScreenShare = useCallback((userId: string) => {
-    setSelectedScreenShareOwnerId(userId);
+    setActiveMedia({ kind: "screen", ownerId: userId });
   }, []);
 
   const selectCamera = useCallback((userId: string) => {
-    setSelectedCameraOwnerId(userId);
+    setActiveMedia({ kind: "camera", ownerId: userId });
   }, []);
+
+  const closeMediaView = useCallback(() => {
+    setActiveMedia(null);
+  }, []);
+
+  // If the viewed stream disappears for any reason, close the view.
+  useEffect(() => {
+    if (!activeMedia) return;
+    const stream =
+      activeMedia.kind === "screen"
+        ? screenShareStreams[activeMedia.ownerId]
+        : activeMedia.ownerId === currentUserId
+          ? localVideoStream
+          : remoteVideoStreams[activeMedia.ownerId];
+    if (!stream) setActiveMedia(null);
+  }, [
+    activeMedia,
+    screenShareStreams,
+    remoteVideoStreams,
+    localVideoStream,
+    currentUserId,
+  ]);
 
   const startVideo = useCallback(async () => {
     if (
@@ -355,23 +469,7 @@ export function useRoomSocket({
           (event.track.contentHint === "detail" ||
             screenShareStreamIdsRef.current.get(userId) === stream.id)
         ) {
-          setScreenShareStreams((previous) => ({
-            ...previous,
-            [userId]: stream,
-          }));
-          event.track.onended = () => {
-            setScreenShareStreams((previous) => {
-              if (previous[userId] !== stream) return previous;
-              const next = { ...previous };
-              delete next[userId];
-              return next;
-            });
-            activeScreenShareUsersRef.current.delete(userId);
-            screenShareStreamIdsRef.current.delete(userId);
-            setSelectedScreenShareOwnerId((selected) =>
-              selected === userId ? null : selected,
-            );
-          };
+          registerRemoteScreenShare(userId, stream);
           return;
         }
 
@@ -379,14 +477,9 @@ export function useRoomSocket({
 
         setRemoteVideoStreams((previous) => ({ ...previous, [userId]: stream }));
         event.track.onended = () => {
-          setRemoteVideoStreams((previous) => {
-            const next = { ...previous };
-            delete next[userId];
-            return next;
-          });
-          setSelectedCameraOwnerId((selected) =>
-            selected === userId ? null : selected,
-          );
+          if (remoteVideoStreamsRef.current[userId] === stream) {
+            removeRemoteCamera(userId);
+          }
         };
       });
 
@@ -454,6 +547,8 @@ export function useRoomSocket({
     stopAudio,
     stopVideo,
     dispatch,
+    registerRemoteScreenShare,
+    removeRemoteCamera,
   ]);
 
   useEffect(() => {
@@ -968,6 +1063,7 @@ export function useRoomSocket({
     stopVideo,
   ]);
 
+  // ── Screen share state (start/stop broadcast from server) ──────────────────
   useEffect(() => {
     if (!roomId) return;
     return roomSocketManager.on("screen-share-state", (payload: unknown) => {
@@ -985,6 +1081,7 @@ export function useRoomSocket({
         if (event.streamId) {
           screenShareStreamIdsRef.current.set(event.userId, event.streamId);
         }
+
         if (event.userId === currentUserId) {
           setScreenShareStreams((previous) => ({
             ...previous,
@@ -992,25 +1089,32 @@ export function useRoomSocket({
               screenShareStreamRef.current ?? previous[event.userId],
           }));
           setIsScreenSharing(Boolean(screenShareStreamRef.current));
+          return;
+        }
+
+        // The track may have arrived BEFORE this event and been classified as
+        // a camera. Reclassify it as a screen share now that the id is known.
+        const existing = remoteVideoStreamsRef.current[event.userId];
+        if (event.streamId && existing && existing.id === event.streamId) {
+          registerRemoteScreenShare(event.userId, existing);
         }
         return;
       }
 
-      activeScreenShareUsersRef.current.delete(event.userId);
-      screenShareStreamIdsRef.current.delete(event.userId);
+      // sharing === false
       if (event.userId === currentUserId) {
+        // Ignore a stale echo of an old stop if a newer share is already active.
+        if (screenShareStreamRef.current) return;
         setIsScreenSharing(false);
       }
-      setScreenShareStreams((previous) => {
-        const next = { ...previous };
-        delete next[event.userId];
-        return next;
-      });
-      setSelectedScreenShareOwnerId((selected) =>
-        selected === event.userId ? null : selected,
-      );
+      removeRemoteScreenShare(event.userId);
     });
-  }, [currentUserId, roomId]);
+  }, [
+    currentUserId,
+    roomId,
+    registerRemoteScreenShare,
+    removeRemoteScreenShare,
+  ]);
 
   useEffect(() => {
     if (!roomId) return;
@@ -1057,14 +1161,10 @@ export function useRoomSocket({
         stopVideo(false);
       }
       if (!event.cameraEnabled) {
-        setRemoteVideoStreams((previous) => {
-          const next = { ...previous };
-          delete next[event.memberId];
-          return next;
-        });
+        removeRemoteCamera(event.memberId);
       }
     });
-  }, [currentUserId, dispatch, roomId, stopVideo]);
+  }, [currentUserId, dispatch, roomId, stopVideo, removeRemoteCamera]);
 
   useEffect(() => {
     if (!roomId) return;
@@ -1075,13 +1175,9 @@ export function useRoomSocket({
         cameraEnabled: boolean;
       };
       if (event.roomId !== roomId || event.cameraEnabled) return;
-      setRemoteVideoStreams((previous) => {
-        const next = { ...previous };
-        delete next[event.userId];
-        return next;
-      });
+      removeRemoteCamera(event.userId);
     });
-  }, [currentUserId, roomId]);
+  }, [roomId, removeRemoteCamera]);
 
   useEffect(() => {
     if (!roomId) return;
@@ -1154,6 +1250,7 @@ export function useRoomSocket({
     stopScreenShare,
     selectScreenShare,
     selectCamera,
+    closeMediaView,
     isScreenSharing,
   };
 }

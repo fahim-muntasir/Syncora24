@@ -8,13 +8,13 @@ import {
   Crown,
   DoorOpen,
   ArrowLeft,
-  Mic,
   ShieldCheck,
   Copy,
   ThumbsUp,
   ThumbsDown,
   Check,
   MessageCircle,
+  Scale,
 } from "lucide-react";
 import { useGetSingleRoomQuery, roomApiSlice } from "@/libs/features/room/roomApiSlice";
 import { useAppSelector, useAppDispatch } from "@/libs/hooks";
@@ -22,13 +22,18 @@ import { publicSocketManager } from "@/libs/socket/index";
 import { generateIdenticonAvatar } from "@/utils/generateAvatar";
 import { RoomType } from "@/types/room";
 import { BackgroundPattern } from "@/components/background/BackgroundPattern";
+import LevelMeter from "@/components/common/Room/LevelMeter";
 
-const levelConfig: Record<string, { bg: string; text: string; border: string; dot: string }> = {
-  Beginner: { bg: "bg-emerald-500/10", text: "text-emerald-400", border: "border-emerald-500/20", dot: "bg-emerald-400" },
-  Intermediate: { bg: "bg-amber-500/10", text: "text-amber-400", border: "border-amber-500/20", dot: "bg-amber-400" },
-  Advanced: { bg: "bg-orange-500/10", text: "text-orange-400", border: "border-orange-500/20", dot: "bg-orange-400" },
-  Native: { bg: "bg-blue-500/10", text: "text-blue-400", border: "border-blue-500/20", dot: "bg-blue-400" },
-};
+const MAX_EMPTY_SLOTS = 6;
+
+function Divider() {
+  return (
+    <span
+      aria-hidden="true"
+      className="hidden h-3 w-px shrink-0 bg-white/10 sm:block"
+    />
+  );
+}
 
 interface Props {
   isOpen: boolean;
@@ -61,7 +66,6 @@ export default function RoomDetailsModal({
   const currentMember = roomData?.members.find(
     (member) => member.id === currentUser?.id,
   );
-  const level = levelConfig[roomData?.level as keyof typeof levelConfig] ?? levelConfig.Beginner;
   const spotsLeft = (roomData?.maxParticipants ?? 0) - (roomData?.members?.length ?? 0);
   const dispatch = useAppDispatch();
   const moderatorIds = useAppSelector((state) => state.room.moderatorIds);
@@ -240,6 +244,13 @@ export default function RoomDetailsModal({
 
   const needsSide = isDebateRoom && !selectedSide;
   const joinDisabled = isJoining || needsSide;
+  const TypeIcon = isDebateRoom ? Scale : MessageCircle;
+
+  const memberCount = roomData?.members?.length ?? 0;
+  const maxParticipants = roomData?.maxParticipants ?? 0;
+  const emptySlotCount = Math.max(0, maxParticipants - memberCount);
+  const visibleEmptySlots = Math.min(emptySlotCount, MAX_EMPTY_SLOTS);
+  const hiddenEmptySlots = emptySlotCount - visibleEmptySlots;
 
   const sideOptions = [
     {
@@ -247,7 +258,7 @@ export default function RoomDetailsModal({
       label: "For",
       hint: "I agree with this topic",
       Icon: ThumbsUp,
-      active: "border-emerald-400/60 bg-emerald-500/10 ring-1 ring-emerald-400/30",
+      active: "border-emerald-400/50 bg-emerald-500/[0.08]",
       iconActive: "bg-emerald-500/20 text-emerald-300",
       labelActive: "text-emerald-300",
     },
@@ -256,268 +267,308 @@ export default function RoomDetailsModal({
       label: "Against",
       hint: "I disagree with this topic",
       Icon: ThumbsDown,
-      active: "border-rose-400/60 bg-rose-500/10 ring-1 ring-rose-400/30",
+      active: "border-rose-400/50 bg-rose-500/[0.08]",
       iconActive: "bg-rose-500/20 text-rose-300",
       labelActive: "text-rose-300",
     },
   ];
 
+  const focusRing =
+    "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-500/60";
+
   return (
     <Modal backdrop={<BackgroundPattern />}>
-      <div className="p-6 sm:p-8 max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+      <div className="flex max-h-[90dvh] min-h-0 flex-col">
 
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6 mb-7">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center flex-wrap gap-2 mb-4">
-              <span className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border font-medium ${level.bg} ${level.text} ${level.border}`}>
-                {roomData?.level}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent sm:p-8">
+
+          <header className="mb-6 sm:mb-7">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-400 sm:gap-x-2.5">
+              <LevelMeter level={roomData?.level} />
+              <Divider />
+              <span className="flex min-w-0 items-center gap-1.5">
+                <Globe2 size={12} className="shrink-0 text-gray-500" />
+                <span className="truncate">{roomData?.language}</span>
               </span>
-              <span className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-white/[0.05] border border-white/[0.08] text-gray-300">
-                <Globe2 size={12} /> {roomData?.language}
-              </span>
-              <span className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.07] text-gray-300">
-                {isDebateRoom ? <Users size={12} /> : <MessageCircle size={12} />}
-                {isDebateRoom ? "Debate Room" : "Open Conversation"}
+              <Divider />
+              <span className="flex items-center gap-1.5 text-gray-500">
+                <TypeIcon size={12} className="shrink-0" />
+                {isDebateRoom ? "Debate" : "Open conversation"}
               </span>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2 leading-tight tracking-tight">
+            <h1 className="mt-3 break-words text-xl font-bold leading-tight tracking-tight text-white sm:text-3xl">
               {roomData?.title}
             </h1>
-            <p className="text-gray-400 text-sm leading-relaxed max-w-lg">
-              {roomData?.description}
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-2 sm:items-end flex-shrink-0">
-            <button
-              className={`group flex w-full sm:w-auto items-center justify-center gap-2.5 px-6 py-3 rounded-xl font-semibold text-sm transition-all duration-200 active:scale-95 ${joinDisabled
-                  ? "bg-green-500/40 text-white/60 cursor-not-allowed"
-                  : "bg-green-500 hover:bg-green-400 text-white shadow-lg shadow-green-500/20 hover:shadow-green-500/30"
-                }`}
-              disabled={joinDisabled}
-              onClick={joinRoomHandler}
-            >
-              <DoorOpen
-                size={18}
-                className={isJoining ? "" : "group-hover:translate-x-0.5 transition-transform duration-200"}
-              />
-              {isJoining ? "Joining…" : "Join Room"}
-            </button>
-            {needsSide && !isJoining ? (
-              <span className="text-xs text-amber-400/80">Choose a side to join</span>
-            ) : (
-              spotsLeft > 0 &&
-              !isJoining && (
-                <span className="text-xs text-gray-500">
-                  {spotsLeft} spot{spotsLeft !== 1 ? "s" : ""} remaining
-                </span>
-              )
+            {roomData?.description && (
+              <p className="mt-2 max-w-xl whitespace-pre-line break-words text-sm leading-relaxed text-gray-400">
+                {roomData.description}
+              </p>
             )}
-          </div>
-        </div>
+          </header>
 
-        {isDebateRoom && (
-          <fieldset className="mb-7 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 sm:p-5">
-            <legend className="sr-only">Choose your position</legend>
+          {/* Debate side picker */}
+          {isDebateRoom && (
+            <fieldset className="mb-6 rounded-xl border border-white/[0.07] bg-[#141414]/60 p-3 sm:mb-7 sm:p-4">
+              <legend className="sr-only">Choose your position</legend>
 
-            <div className="flex items-start gap-3 mb-4">
-              <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-green-400/80">
-                  Choose your position
-                </p>
-              </div>
-            </div>
+              <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                Choose your position
+              </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {sideOptions.map(({ value, label, hint, Icon, active, iconActive, labelActive }) => {
-                const isSelected = selectedSide === value;
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    aria-pressed={isSelected}
-                    disabled={Boolean(currentMember?.side)}
-                    onClick={() => setSelectedSide(value)}
-                    className={`group relative flex items-center gap-3 rounded-xl border p-4 text-left transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60 ${isSelected
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3">
+                {sideOptions.map(({ value, label, hint, Icon, active, iconActive, labelActive }) => {
+                  const isSelected = selectedSide === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      aria-pressed={isSelected}
+                      disabled={Boolean(currentMember?.side)}
+                      onClick={() => setSelectedSide(value)}
+                      className={`group relative flex items-center gap-3 rounded-xl border p-3 text-left transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none sm:p-3.5 ${focusRing} ${isSelected
                         ? active
-                        : "border-white/10 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.05]"
-                      }`}
-                  >
-                    <span
-                      className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full transition-colors ${isSelected ? iconActive : "bg-white/[0.05] text-gray-400 group-hover:text-white"
+                        : "border-white/[0.08] bg-white/[0.02] hover:border-white/[0.16] hover:bg-white/[0.04]"
                         }`}
                     >
-                      <Icon size={18} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className={`block text-sm font-semibold ${isSelected ? labelActive : "text-white"}`}>
-                        {label}
+                      <span
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors motion-reduce:transition-none ${isSelected
+                          ? iconActive
+                          : "bg-white/[0.05] text-gray-400 group-hover:text-white"
+                          }`}
+                      >
+                        <Icon size={16} />
                       </span>
-                      <span className="block text-xs text-gray-500 mt-0.5">{hint}</span>
-                    </span>
-                    <span
-                      className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border transition-all ${isSelected
-                          ? "border-transparent bg-white text-black"
-                          : "border-white/15 text-transparent"
-                        }`}
-                      aria-hidden="true"
-                    >
-                      <Check size={12} strokeWidth={3} />
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </fieldset>
-        )}
-
-        <div className="border-t border-white/[0.06] pt-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-white uppercase tracking-wider">
-              Participants
-            </h2>
-
-            {isRoomLoading || isFetching ? (
-              <div className="h-6 w-16 rounded-full bg-white/[0.05] animate-pulse" />
-            ) : (
-              <span className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-white/[0.05] border border-white/[0.08] text-gray-300">
-                <Users size={12} />
-                {roomData?.members?.length ?? 0} /{" "}
-                {roomData?.maxParticipants ?? 0}
-              </span>
-            )}
-          </div>
-
-          {isRoomLoading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {[1, 2].map((item) => (
-                <div
-                  key={item}
-                  className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]"
-                >
-                  <div className="w-11 h-11 rounded-full bg-white/[0.06] animate-pulse" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-3 w-24 rounded bg-white/[0.06] animate-pulse" />
-                    <div className="h-2.5 w-16 rounded bg-white/[0.04] animate-pulse" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {roomData?.members?.map((member) => {
-                const isHost = member.id === roomData?.hostId;
-                const isModerator = moderatorIds.includes(member.id);
-
-                const avatarSvg =
-                  member.avatar ||
-                  generateIdenticonAvatar(member.name, 60);
-
-                return (
-                  <div
-                    key={member.id}
-                    className="group flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:border-white/[0.12] hover:bg-white/[0.05] transition-all duration-200"
-                  >
-                    <div className="relative flex-shrink-0">
-                      <div
-                        dangerouslySetInnerHTML={{
-                          __html: avatarSvg,
-                        }}
-                        className={`rounded-full overflow-hidden border-2 transition-all duration-300 flex items-center justify-center ${isHost ? "border-amber-500/40" : isModerator ? "border-blue-500/30" : "border-white/10"}`}
-                        style={{ width: 44, height: 44 }}
-                      />
-                      <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#121212] bg-green-400" />
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-medium text-white text-sm truncate">
-                          {member.name}
-                        </span>
-
-                        {isHost && (
-                          <Crown size={12} className="text-amber-400 flex-shrink-0" />
-                        )}
-
-                        {isModerator && !isHost && (
-                          <ShieldCheck size={12} className="text-blue-400 flex-shrink-0" />
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <Mic size={11} className="text-gray-500" />
-                        <span className="text-xs text-gray-500">
-                          {isHost ? "Host" : isModerator ? "Moderator" : "Member"}
-                        </span>
-                      </div>
-
-                      {isDebateRoom && member.side && (
+                      <span className="min-w-0 flex-1">
                         <span
-                          className={`mt-1.5 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${member.side === "for"
-                              ? "bg-emerald-500/10 text-emerald-300"
-                              : "bg-rose-500/10 text-rose-300"
+                          className={`block text-sm font-semibold ${isSelected ? labelActive : "text-white"
                             }`}
                         >
-                          {member.side === "for" ? "For" : "Against"}
+                          {label}
                         </span>
-                      )}
+                        <span className="mt-0.5 block text-xs text-gray-500">{hint}</span>
+                      </span>
+                      <span
+                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors motion-reduce:transition-none ${isSelected
+                          ? "border-transparent bg-white text-black"
+                          : "border-white/15 text-transparent"
+                          }`}
+                        aria-hidden="true"
+                      >
+                        <Check size={12} strokeWidth={3} />
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+          )}
+
+          {/* Participants */}
+          <section
+            aria-label="Participants"
+            className="border-t border-white/[0.06] pt-5 sm:pt-6"
+          >
+            <div className="mb-3.5 flex items-center justify-between gap-3">
+              <h2 className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                Participants
+              </h2>
+
+              {isRoomLoading || isFetching ? (
+                <div className="h-4 w-12 animate-pulse rounded bg-white/[0.06]" />
+              ) : (
+                <span
+                  className="flex items-center gap-1.5 text-xs tabular-nums text-gray-400"
+                  aria-label={`${memberCount} of ${maxParticipants} participants`}
+                >
+                  <Users size={12} className="text-gray-500" />
+                  {memberCount}/{maxParticipants}
+                </span>
+              )}
+            </div>
+
+            {isRoomLoading ? (
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3">
+                {[1, 2].map((item) => (
+                  <div
+                    key={item}
+                    className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.03] p-3"
+                  >
+                    <div className="h-11 w-11 animate-pulse rounded-xl bg-white/[0.06]" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-3 w-24 animate-pulse rounded bg-white/[0.06]" />
+                      <div className="h-2.5 w-16 animate-pulse rounded bg-white/[0.04]" />
                     </div>
                   </div>
-                );
-              })}
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3">
+                {roomData?.members?.map((member) => {
+                  const isHost = member.id === roomData?.hostId;
+                  const isModerator = moderatorIds.includes(member.id);
 
-              {/* Empty slots */}
-              {Array.from({
-                length: Math.max(
-                  0,
-                  (roomData?.maxParticipants ?? 0) -
-                  (roomData?.members?.length ?? 0),
-                ),
-              }).map((_, i) => (
-                <div
-                  key={`empty-${i}`}
-                  className="flex items-center gap-3 p-3 rounded-xl border border-dashed border-white/[0.08]"
-                >
-                  <div className="w-11 h-11 rounded-full border border-dashed border-white/[0.1] flex items-center justify-center">
-                    <div className="w-2 h-2 rounded-full bg-white/[0.1]" />
+                  const avatarSvg =
+                    member.avatar ||
+                    generateIdenticonAvatar(member.name, 60);
+
+                  return (
+                    <div
+                      key={member.id}
+                      className="flex min-w-0 items-center gap-3 rounded-xl border border-white/[0.07] bg-[#141414]/50 p-2.5 transition-colors duration-200 hover:border-white/[0.14] motion-reduce:transition-none sm:p-3"
+                    >
+                      <div
+                        dangerouslySetInnerHTML={{ __html: avatarSvg }}
+                        className={`flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border ${isHost
+                          ? "border-amber-500/40"
+                          : isModerator
+                            ? "border-blue-500/30"
+                            : "border-white/[0.08]"
+                          }`}
+                      />
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate text-sm font-medium text-white">
+                            {member.name}
+                          </span>
+                          {isHost && (
+                            <Crown size={12} className="shrink-0 text-amber-400" />
+                          )}
+                          {isModerator && !isHost && (
+                            <ShieldCheck size={12} className="shrink-0 text-blue-400" />
+                          )}
+                        </div>
+
+                        <div className="mt-0.5 flex items-center gap-2 text-xs text-gray-500">
+                          <span>
+                            {isHost ? "Host" : isModerator ? "Moderator" : "Member"}
+                          </span>
+                          {isDebateRoom && member.side && (
+                            <>
+                              <span
+                                aria-hidden="true"
+                                className="h-3 w-px shrink-0 bg-white/10"
+                              />
+                              <span
+                                className={`font-medium ${member.side === "for"
+                                  ? "text-emerald-300"
+                                  : "text-rose-300"
+                                  }`}
+                              >
+                                {member.side === "for" ? "For" : "Against"}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {Array.from({ length: visibleEmptySlots }).map((_, i) => (
+                  <div
+                    key={`empty-${i}`}
+                    aria-hidden="true"
+                    className="relative flex items-center gap-3 overflow-hidden rounded-xl border border-dashed border-white/[0.08] bg-white/[0.015] p-2.5 sm:p-3"
+                  >
+                    <div
+                      className="pointer-events-none absolute inset-0 -translate-x-full animate-[shimmer_2.8s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-white/[0.035] to-transparent motion-reduce:animate-none"
+                      style={{ animationDelay: `${i * 250}ms` }}
+                    />
+
+                    <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-dashed border-white/[0.08]">
+                      <div className="h-2 w-2 rounded-full bg-emerald-400/60 shadow-[0_0_8px_rgba(52,211,153,0.25)] animate-pulse motion-reduce:animate-none" />
+                    </div>
+
+                    <div className="relative flex flex-col gap-1">
+                      <span className="text-xs text-gray-400 truncate">
+                        Open slot
+                      </span>
+                    </div>
                   </div>
-                  <span className="text-xs text-gray-600">Open slot</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                ))}
 
-        <div className="border-t border-white/[0.06] pt-5 flex items-center justify-between gap-4">
-          <button
-            onClick={handleBackToHome}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/[0.08] text-gray-400 text-sm hover:border-white/[0.15] hover:text-white hover:bg-white/[0.03] transition-all duration-200 active:scale-95"
-          >
-            <ArrowLeft size={16} />
-            Back to rooms
-          </button>
 
-          <div>
-            <div className="flex items-center gap-1 mt-4 text-xs text-gray-600">
+                {hiddenEmptySlots > 0 && (
+                  <p className="px-1 text-xs text-gray-600 sm:col-span-2">
+                    +{hiddenEmptySlots} more open slot{hiddenEmptySlots !== 1 ? "s" : ""}
+                  </p>
+                )}
+              </div>
+            )}
+          </section>
+
+          {/* Room ID + guidelines */}
+          <div className="mt-6 flex flex-col gap-2 border-t border-white/[0.06] pt-4 text-xs text-gray-600 sm:mt-7 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-1">
               <button
                 type="button"
                 onClick={handleCopyRoomId}
                 disabled={!roomData?.id}
-                className="p-1 rounded-md text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`shrink-0 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none ${focusRing}`}
                 title="Copy Room ID"
                 aria-label="Copy Room ID"
               >
                 <Copy size={13} />
               </button>
-              <span className="font-mono">{roomData?.id}</span>
+              <span className="truncate font-mono">{roomData?.id}</span>
             </div>
-            <p className="text-xs text-gray-600 hidden sm:block">
+
+            <p>
               By joining you agree to our{" "}
-              <span className="text-gray-500 underline underline-offset-2 cursor-pointer hover:text-white transition-colors">
+              <span className="cursor-pointer text-gray-500 underline underline-offset-2 transition-colors hover:text-white motion-reduce:transition-none">
                 community guidelines
               </span>
             </p>
+          </div>
+        </div>
+
+        <div className="shrink-0 border-t border-white/[0.06] bg-[#141414] rounded-b-2xl px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:px-8 sm:pb-5 sm:pt-4">
+          {needsSide && !isJoining && (
+            <p className="mb-2 text-xs text-amber-400/80 sm:text-right">
+              Choose a side to join
+            </p>
+          )}
+
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <button
+              type="button"
+              onClick={handleBackToHome}
+              aria-label="Back to rooms"
+              className={`flex shrink-0 items-center justify-center gap-2 rounded-xl border border-white/[0.08] px-3.5 py-2.5 text-sm text-gray-400 transition-colors hover:border-white/[0.16] hover:bg-white/[0.04] hover:text-white active:scale-[0.98] motion-reduce:transition-none sm:px-4 ${focusRing}`}
+            >
+              <ArrowLeft size={16} />
+              <span className="hidden min-[380px]:inline">Back to rooms</span>
+            </button>
+
+            <div className="flex min-w-0 flex-1 items-center justify-end gap-3">
+              {!needsSide && !isJoining && spotsLeft > 0 && (
+                <span className="hidden whitespace-nowrap text-xs text-gray-500 sm:inline">
+                  {spotsLeft} spot{spotsLeft !== 1 ? "s" : ""} remaining
+                </span>
+              )}
+
+              <button
+                type="button"
+                disabled={joinDisabled}
+                onClick={joinRoomHandler}
+                className={`group flex flex-1 items-center justify-center gap-2.5 rounded-xl px-5 py-2.5 text-sm font-semibold transition-colors duration-200 active:scale-[0.98] motion-reduce:transition-none sm:flex-none sm:px-6 sm:py-3 ${focusRing} ${joinDisabled
+                  ? "cursor-not-allowed bg-green-500/40 text-white/60"
+                  : "bg-green-500 text-white shadow-lg shadow-green-500/20 hover:bg-green-400"
+                  }`}
+              >
+                <DoorOpen
+                  size={18}
+                  className={
+                    isJoining
+                      ? ""
+                      : "transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none"
+                  }
+                />
+                {isJoining ? "Joining…" : "Join Room"}
+              </button>
+            </div>
           </div>
         </div>
       </div>

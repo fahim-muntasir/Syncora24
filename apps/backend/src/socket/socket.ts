@@ -194,33 +194,47 @@ export const initializeSocket = (server: HttpServer) => {
       socket.to(roomId).emit("user-speaking", { roomId, userId, speaking });
     });
 
-    socket.on(
-      "screen-share-state",
-      ({ roomId, sharing, streamId, activity = true }) => {
-        if (!roomId || socket.data.roomId !== roomId) return;
-        const userId = socket.data.user.id;
-        const isSharing = Boolean(sharing);
-        const didStateChange = Boolean(socket.data.isScreenSharing) !== isSharing;
+    socket.on("screen-share-state", (payload: unknown) => {
+      const { roomId, sharing, streamId, activity } = (payload ?? {}) as {
+        roomId?: unknown;
+        sharing?: unknown;
+        streamId?: unknown;
+        activity?: unknown;
+      };
 
-        socket.data.isScreenSharing = isSharing;
-        socket.data.screenShareStreamId = sharing ? streamId : undefined;
+      if (typeof roomId !== "string" || socket.data.roomId !== roomId) return;
 
-        roomIo?.to(roomId).emit("screen-share-state", {
-          roomId,
+      const userId = socket.data.user.id;
+      const isSharing = sharing === true;
+      const nextStreamId =
+        isSharing && typeof streamId === "string" ? streamId : undefined;
+      const wasSharing = Boolean(socket.data.isScreenSharing);
+      const didStateChange = wasSharing !== isSharing;
+
+      // Drop duplicate events (same state, same stream).
+      if (!didStateChange && socket.data.screenShareStreamId === nextStreamId) {
+        return;
+      }
+
+      socket.data.isScreenSharing = isSharing;
+      socket.data.screenShareStreamId = nextStreamId;
+
+      roomIo?.to(roomId).emit("screen-share-state", {
+        roomId,
+        userId,
+        userName: socket.data.userName ?? userId,
+        sharing: isSharing,
+        streamId: nextStreamId,
+      });
+
+      if (activity !== false && didStateChange) {
+        emitRoomActivity(roomId, {
+          type: isSharing ? "screen-share-started" : "screen-share-stopped",
           userId,
           userName: socket.data.userName ?? userId,
-          sharing: isSharing,
-          streamId,
         });
-        if (activity && didStateChange) {
-          emitRoomActivity(roomId, {
-            type: isSharing ? "screen-share-started" : "screen-share-stopped",
-            userId,
-            userName: socket.data.userName ?? userId,
-          });
-        }
-      },
-    );
+      }
+    });
 
     // mute user
     socket.on("user-mute-status", ({ roomId, isUnMuted }) => {
