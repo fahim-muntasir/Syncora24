@@ -23,16 +23,34 @@ The frontend provides the user interface for real-time rooms, messaging, audio/v
 | Deployment | Vercel |
 
 ---
-
 ## Screenshots
 
-| View | Screenshot |
-|---|---|
-| Landing Page | ![Landing Page](../../docs/screenshots/ss1.png) |
-| Practice Room | ![Practice Room](../../docs/screenshots/ss3.png) |
-| Room Details | ![Room Details](../../docs/screenshots/ss2.png) |
-| Chat Panel | ![Chat Panel](../../docs/screenshots/ss4.png) |
-| Room Participants | ![Room Participants](../../docs/screenshots/ss5.png) |
+### Landing Page
+![Syncora24 landing page](../../docs/screenshots/ss6.png)
+
+### Room Details and Joining
+![Room details and joining options](../../docs/screenshots/ss7.png)
+
+### Open Practice Room
+![Real-time language practice room](../../docs/screenshots/ss8.png)
+
+### Debate Room
+![Debate room with For and Against sides](../../docs/screenshots/ss9.png)
+
+### Moderation Controls
+![Room participant moderation controls](../../docs/screenshots/ss11.png)
+
+### Admin/moderator action panel
+![Room participant moderation controls](../../docs/screenshots/ss13.png)
+
+### Screen Sharing
+![Screen sharing in a practice room](../../docs/screenshots/ss12.png)
+
+### Chat Panel
+![Real-time room chat](../../docs/screenshots/ss10.png)
+
+### Room Participants Panel
+![Room participants and their statuses](../../docs/screenshots/ss14.png)
 
 ---
 
@@ -150,6 +168,19 @@ Participants can share their screen during an active room session.
 - Start/stop screen sharing
 - Real-time screen-sharing state
 - Screen sharing alongside audio/video communication
+
+---
+
+### Open Conversation & Debate Rooms
+
+When creating a room, choose between an **Open Conversation** and a **Debate**. Room type, topic, context, language, proficiency level, and participant limit are set during room creation.
+
+Debate rooms are centered on a topic participants can argue for or against:
+
+- Choose **For** or **Against** before joining; a position is required to enter a debate room.
+- The participant grid groups members into For and Against sections, with unassigned participants shown separately when present.
+- Change your position from your participant actions while in the room. Other participants see the new position immediately, and a position-change activity is shown when the member changes sides.
+- Open conversation rooms do not require a position and retain the regular participant layout.
 
 ---
 

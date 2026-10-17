@@ -216,6 +216,21 @@ The backend's role is primarily to coordinate the signaling and real-time state 
 
 ---
 
+## Open Conversation & Debate Rooms
+
+Room creation accepts a `type` of `open` or `debate`. If omitted, the backend defaults the room type to `open`, preserving compatibility with clients that do not send a room type. The selected type is included in room data and maintained with the active room state in Redis.
+
+Debate room membership records a participant's `side` as `for` or `against`:
+
+- Joining a debate room requires a valid side in the `join-room` Socket.IO payload. The backend rejects missing or invalid sides; non-debate rooms do not retain a debate side.
+- A participant can change their position in the room using the `change-debate-side` event with `{ roomId, side }`.
+- The backend checks that the requester is a room member and that the room is a debate room before updating the member record.
+- Successful updates are broadcast as `room-member-side-updated` to room participants and `public-room-member-side-updated` to public room listings. A `member-side-changed` room activity is emitted when the position actually changes.
+
+This keeps the room's debate position authoritative in the backend and synchronized across connected clients.
+
+---
+
 ## Room Moderation
 
 Syncora24 includes role-based room moderation.
