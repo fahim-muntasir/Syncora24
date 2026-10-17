@@ -20,7 +20,7 @@ export default function EndRoomConfirmModal({
 
   return (
     <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[1000] flex items-center justify-center p-4 backdrop-blur-md"
       role="dialog"
       aria-modal="true"
       aria-labelledby="end-room-title"
