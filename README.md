@@ -27,6 +27,7 @@ Syncora24 is a full-stack real-time language practice platform designed around l
 
 Users can join practice rooms and interact with other participants through:
 
+- Open conversation rooms or structured debate rooms
 - Real-time text chat
 - Live audio conversations
 - Live video conversations
@@ -61,9 +62,9 @@ The project has since evolved from a voice-and-chat prototype into a more comple
 
 ## Screenshots
 
-| Landing Page | Practice Room | Room Details |
+| Landing Page | Open Practice Room | Debate Room |
 |---|---|---|
-| ![Landing](./docs/screenshots/ss1.png) | ![Room](./docs/screenshots/ss5.png) | ![Room Details](./docs/screenshots/ss2.png) |
+| ![Landing](./docs/screenshots/ss6.png) | ![Room](./docs/screenshots/ss8.png) | ![Room Details](./docs/screenshots/ss9.png) |
 
 ---
 
@@ -82,6 +83,19 @@ Syncora24 uses WebRTC for peer-to-peer media communication.
 - Real-time microphone state synchronization
 - Real-time speaking indicators
 - Participant media status updates
+
+---
+
+### Open Conversation & Debate Rooms
+
+Rooms can be created as either an **Open Conversation** or a **Debate**. Both room types support the same language, proficiency level, topic, participant limit, chat, and live media features.
+
+Debate rooms are organized around a topic that participants can argue for or against:
+
+- Participants choose **For** or **Against** before joining a debate room.
+- The participant view groups members by side and shows people who have not yet selected a position separately.
+- Members can switch sides while in the room; the updated position is synchronized with room participants and reflected in room activity.
+- Open conversation rooms do not require or display debate positions.
 
 ---
 

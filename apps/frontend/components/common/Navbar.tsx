@@ -1,12 +1,14 @@
 "use client";
 import React from "react";
 import Link from "next/link";
-import { BookOpenCheck, LogIn, LogOut, Plus } from "lucide-react";
+import Image from "next/image";
+import { LogIn, LogOut, Plus } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/libs/hooks";
 import { userLoggedOut } from "@/libs/features/auth/authSlice";
 import { useLogoutMutation } from "@/libs/features/auth/authApiSlice";
 import { openCreateRoomModal } from "@/libs/features/modal/modalSlice";
 import CreateRoomModal from "../CreateRoomModal";
+import Logo from "@/public/logo.svg";
 
 const focusRing =
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-500/60";
@@ -45,17 +47,7 @@ export function Navbar() {
             href="/"
             className={`group flex items-center gap-3 rounded-lg ${focusRing}`}
           >
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.08] bg-[#161616] transition-colors duration-200 group-hover:border-white/[0.16] motion-reduce:transition-none">
-              <BookOpenCheck className="h-[18px] w-[18px] text-green-400" />
-            </span>
-            <span className="flex flex-col leading-none">
-              <span className="text-[15px] font-semibold tracking-tight text-white">
-                Syncora24
-              </span>
-              <span className="mt-1 text-[10px] font-medium uppercase tracking-wider text-gray-500">
-                Speak & Listen
-              </span>
-            </span>
+            <Image src={Logo} alt="Syncora24" width={110} height={30} priority />
           </Link>
 
           <div className="flex items-center gap-2">
