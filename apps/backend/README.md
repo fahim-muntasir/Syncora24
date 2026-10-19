@@ -77,6 +77,35 @@ Use strong, environment-specific secrets for production deployments.
 
 ---
 
+## Refresh Sessions
+
+Refresh tokens are single-use and backed by MongoDB session records. Each record
+stores the user ID, current token ID, an HMAC-SHA256 digest of the current token,
+and its expiry; the refresh token itself is never persisted. Reuse of a rotated
+token revokes that session, and logout revokes the session associated with the
+cookie. Refresh tokens issued before this change do not contain session
+identifiers and must be replaced by signing in again.
+
+Before deploying, create the TTL cleanup index because backend Mongoose
+`autoIndex` is disabled:
+
+```javascript
+db.refreshsessions.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+```
+
+Expiry is also checked during every refresh, so the TTL index is for cleanup and
+is not relied on for authorization. Keep `REFRESH_TOKEN_SECRET` stable across
+backend instances and deployments; changing it invalidates all outstanding
+refresh tokens. Existing access tokens remain valid until their normal expiry. The frontend
+serializes RTK Query refresh requests within a page instance; a replayed token
+from another client or tab is treated as reuse and revokes that session.
+
+### Refresh Token Flow
+
+![Syncora24 Refresh Token Flow](../../docs/screenshots/refresh-token-flow.png)
+
+---
+
 ## Getting Started
 
 ### Start Local Infrastructure

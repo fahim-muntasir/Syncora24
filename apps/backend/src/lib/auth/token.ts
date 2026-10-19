@@ -4,6 +4,8 @@ import createHttpError from "http-errors";
 type RefreshTokenPayload = {
   id: string;
   exp: number;
+  sid?: string;
+  jti?: string;
 };
 
 const expiresIn = (process.env.ACCESS_TOKEN_EXPIRESIN ??
@@ -70,6 +72,7 @@ export const refreshTokenGenerator = async (
 
 export const refreshTokenValidator = async (
   token: string,
+  options: { ignoreExpiration?: boolean; allowLegacy?: boolean } = {},
 ): Promise<RefreshTokenPayload> => {
   try {
     if (!process.env.REFRESH_TOKEN_SECRET) {
@@ -79,20 +82,44 @@ export const refreshTokenValidator = async (
     const decoded = jwt.verify(
       token,
       process.env.REFRESH_TOKEN_SECRET,
+      {
+        algorithms: ["HS256"],
+        ignoreExpiration: options.ignoreExpiration ?? false,
+      },
     );
 
     if (typeof decoded === "string") {
-      throw createHttpError(401, "Invalid token payload.");
+      throw createHttpError(401, "Invalid refresh token.");
     }
 
-    return decoded as RefreshTokenPayload;
+    const { id, exp, sid, jti } = decoded;
+    if (
+      typeof id !== "string" ||
+      typeof exp !== "number" ||
+      (sid !== undefined && typeof sid !== "string") ||
+      (jti !== undefined && typeof jti !== "string") ||
+      (!options.allowLegacy && (typeof sid !== "string" || typeof jti !== "string"))
+    ) {
+      throw createHttpError(401, "Invalid refresh token.");
+    }
+
+    return {
+      id,
+      exp,
+      ...(typeof sid === "string" ? { sid } : {}),
+      ...(typeof jti === "string" ? { jti } : {}),
+    };
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {
       throw createHttpError(401, "Refresh token has expired.");
     }
 
     if (error instanceof jwt.JsonWebTokenError) {
-      throw createHttpError(400, "Invalid token.");
+      throw createHttpError(401, "Invalid refresh token.");
+    }
+
+    if (createHttpError.isHttpError(error)) {
+      throw error;
     }
 
     throw createHttpError(
