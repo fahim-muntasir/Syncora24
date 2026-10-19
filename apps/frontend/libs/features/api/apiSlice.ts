@@ -11,14 +11,6 @@ import { userLoggedOut, userLoggedIn } from "../auth/authSlice";
 
 const mutex = new Mutex();
 
-// const getApiBase = () => {
-//   if (process.env.NODE_ENV === "development") {
-//     return `${process.env.NEXT_PUBLIC_API_URL}/api/v1`;
-//   }
-
-//   return `/api/v1`;
-// };
-
 const getApiBase = () => {
   return (
     (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001") +
@@ -57,15 +49,19 @@ const baseQueryWithReauth: BaseQueryFn<
   // Wait if another request is already refreshing
   await mutex.waitForUnlock();
 
-  let result = await baseQuery(
-    args,
-    api,
-    extraOptions
-  );
-
   const isRefreshRequest =
-  typeof args === "object" &&
-  args.url === "/auth/refresh";
+    typeof args === "object" && args.url === "/auth/refresh";
+
+  if (isRefreshRequest) {
+    const release = await mutex.acquire();
+    try {
+      return await baseQuery(args, api, extraOptions);
+    } finally {
+      release();
+    }
+  }
+
+  let result = await baseQuery(args, api, extraOptions);
 
   if (result.error?.status === 401 && !isRefreshRequest) {
     if (!mutex.isLocked()) {
@@ -119,7 +115,6 @@ const baseQueryWithReauth: BaseQueryFn<
             extraOptions
           );
         } else {
-          // Refresh failed
           localStorage.removeItem("auth");
 
           api.dispatch(userLoggedOut());
