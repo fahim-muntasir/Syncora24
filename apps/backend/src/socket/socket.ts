@@ -34,6 +34,7 @@ import {
   moderatorSetMuteAllSocketSchema,
   offerSocketSchema,
   screenShareStateSocketSchema,
+  sendMessageSocketSchema,
   setModeratorRoleSocketSchema,
   targetMemberSocketSchema,
   userMuteStatusSocketSchema,
@@ -41,6 +42,7 @@ import {
 } from "../schemas/socketSchema";
 import { withMemberTransition } from "./memberTransitionQueue";
 import { validateSocketPayload } from "./validatePayload";
+import { enforceSocketRateLimit, socketRatePolicies } from "./rateLimit";
 
 let io: Server | null = null;
 let publicIo: Namespace | null = null;
@@ -98,6 +100,7 @@ export const initializeSocket = (server: HttpServer) => {
           success: boolean;
           message?: string;
           code?: string;
+          retryAfterMs?: number;
         }) => void,
       ) => {
         const parsedPayload = validateSocketPayload(
@@ -110,6 +113,17 @@ export const initializeSocket = (server: HttpServer) => {
         if (!parsedPayload) return;
         const { roomId, side, reconnectOnly } = parsedPayload;
         const userId = socket.data.user.id;
+        if (
+          !(await enforceSocketRateLimit(
+            socket,
+            "join-room",
+            socketRatePolicies.roomJoin(userId, roomId),
+            "closed",
+            callback,
+          ))
+        ) {
+          return;
+        }
         try {
           const response = await withMemberTransition(
             getDisconnectKey(roomId, userId),
@@ -147,7 +161,11 @@ export const initializeSocket = (server: HttpServer) => {
       "change-debate-side",
       async (
         payload: unknown,
-        callback?: (response: { success: boolean; message?: string }) => void,
+        callback?: (response: {
+          success: boolean;
+          message?: string;
+          retryAfterMs?: number;
+        }) => void,
       ) => {
         const parsedPayload = validateSocketPayload(
           socket,
@@ -158,6 +176,17 @@ export const initializeSocket = (server: HttpServer) => {
         );
         if (!parsedPayload) return;
         const { roomId, side } = parsedPayload;
+        if (
+          !(await enforceSocketRateLimit(
+            socket,
+            "change-debate-side",
+            socketRatePolicies.moderation(socket.data.user.id, roomId),
+            "closed",
+            callback,
+          ))
+        ) {
+          return;
+        }
         if (socket.data.roomId !== roomId) {
           callback?.({
             success: false,
@@ -243,7 +272,7 @@ export const initializeSocket = (server: HttpServer) => {
     });
 
     // Handle user speaking status
-    socket.on("user-speaking", (payload: unknown) => {
+    socket.on("user-speaking", async (payload: unknown) => {
       const parsedPayload = validateSocketPayload(
         socket,
         "user-speaking",
@@ -254,13 +283,23 @@ export const initializeSocket = (server: HttpServer) => {
       const { roomId, speaking } = parsedPayload;
       if (socket.data.roomId !== roomId) return;
       const userId = socket.data.user.id;
+      if (
+        !(await enforceSocketRateLimit(
+          socket,
+          "user-speaking",
+          socketRatePolicies.speaking(userId, roomId),
+          "open",
+        ))
+      ) {
+        return;
+      }
       console.log(`🎙 ${userId} ${speaking ? "started" : "stopped"} speaking`);
 
       // Broadcast to others in the same room
       socket.to(roomId).emit("user-speaking", { roomId, userId, speaking });
     });
 
-    socket.on("screen-share-state", (payload: unknown) => {
+    socket.on("screen-share-state", async (payload: unknown) => {
       const parsedPayload = validateSocketPayload(
         socket,
         "screen-share-state",
@@ -272,6 +311,16 @@ export const initializeSocket = (server: HttpServer) => {
       if (socket.data.roomId !== roomId) return;
 
       const userId = socket.data.user.id;
+      if (
+        !(await enforceSocketRateLimit(
+          socket,
+          "screen-share-state",
+          socketRatePolicies.mediaState(userId, roomId),
+          "open",
+        ))
+      ) {
+        return;
+      }
       const isSharing = sharing;
       const nextStreamId = isSharing ? streamId : undefined;
       const wasSharing = Boolean(socket.data.isScreenSharing);
@@ -303,7 +352,7 @@ export const initializeSocket = (server: HttpServer) => {
     });
 
     // mute user
-    socket.on("user-mute-status", (payload: unknown) => {
+    socket.on("user-mute-status", async (payload: unknown) => {
       const parsedPayload = validateSocketPayload(
         socket,
         "user-mute-status",
@@ -314,6 +363,16 @@ export const initializeSocket = (server: HttpServer) => {
       const { roomId, isUnMuted } = parsedPayload;
       if (socket.data.roomId !== roomId) return;
       const userId = socket.data.user.id;
+      if (
+        !(await enforceSocketRateLimit(
+          socket,
+          "user-mute-status",
+          socketRatePolicies.mediaState(userId, roomId),
+          "open",
+        ))
+      ) {
+        return;
+      }
       console.log(
         `🎙 ${userId} ${isUnMuted ? "unmuted" : "muted"} microphone room: ${roomId}`,
       );
@@ -419,6 +478,18 @@ export const initializeSocket = (server: HttpServer) => {
       );
       if (!parsedPayload) return;
       const { roomId, targetUserId } = parsedPayload;
+      if (
+        !(await enforceSocketRateLimit(
+          socket,
+          "kick-member",
+          socketRatePolicies.moderation(socket.data.user.id, roomId),
+          "closed",
+          undefined,
+          "moderation-error",
+        ))
+      ) {
+        return;
+      }
       try {
         const room = await findSingleItem(roomId);
         if (!room) throw new Error("Room not found.");
@@ -487,6 +558,18 @@ export const initializeSocket = (server: HttpServer) => {
       );
       if (!parsedPayload) return;
       const { roomId, targetUserId, isModerator } = parsedPayload;
+      if (
+        !(await enforceSocketRateLimit(
+          socket,
+          "set-moderator-role",
+          socketRatePolicies.moderation(socket.data.user.id, roomId),
+          "closed",
+          undefined,
+          "moderation-error",
+        ))
+      ) {
+        return;
+      }
       try {
         const result = await setModeratorRole({
           roomId,
@@ -522,20 +605,51 @@ export const initializeSocket = (server: HttpServer) => {
       }
     });
 
-    socket.on("sendMessage", (payload: unknown, callback) => {
-      void handleSendMessage(
-        socket,
-        payload,
-        (roomId, event, data) => roomIo?.to(roomId).emit(event, data),
-        {
-          findRoom: findSingleItem,
-          isKicked: async (roomId, userId) =>
-            (await redis.sismember(`room:${roomId}:kicked-members`, userId)) ===
-            1,
-        },
-        callback,
-      );
-    });
+    socket.on(
+      "sendMessage",
+      async (
+        payload: unknown,
+        callback?: (response: {
+          success: boolean;
+          message?: string;
+          retryAfterMs?: number;
+        }) => void,
+      ) => {
+        const parsedPayload = validateSocketPayload(
+          socket,
+          "sendMessage",
+          sendMessageSocketSchema,
+          payload,
+          callback,
+        );
+        if (!parsedPayload) return;
+        if (
+          !(await enforceSocketRateLimit(
+            socket,
+            "sendMessage",
+            socketRatePolicies.chat(socket.data.user.id, parsedPayload.roomId),
+            "closed",
+            callback,
+          ))
+        ) {
+          return;
+        }
+        void handleSendMessage(
+          socket,
+          parsedPayload,
+          (roomId, event, data) => roomIo?.to(roomId).emit(event, data),
+          {
+            findRoom: findSingleItem,
+            isKicked: async (roomId, userId) =>
+              (await redis.sismember(
+                `room:${roomId}:kicked-members`,
+                userId,
+              )) === 1,
+          },
+          callback,
+        );
+      },
+    );
 
     socket.on("moderator-mute-user", async (payload: unknown) => {
       const parsedPayload = validateSocketPayload(
@@ -546,6 +660,18 @@ export const initializeSocket = (server: HttpServer) => {
       );
       if (!parsedPayload) return;
       const { roomId, targetUserId } = parsedPayload;
+      if (
+        !(await enforceSocketRateLimit(
+          socket,
+          "moderator-mute-user",
+          socketRatePolicies.moderation(socket.data.user.id, roomId),
+          "closed",
+          undefined,
+          "moderation-error",
+        ))
+      ) {
+        return;
+      }
       try {
         const moderatorId = socket.data.userId;
 
@@ -598,6 +724,18 @@ export const initializeSocket = (server: HttpServer) => {
       );
       if (!parsedPayload) return;
       const { roomId, targetUserId } = parsedPayload;
+      if (
+        !(await enforceSocketRateLimit(
+          socket,
+          "moderator-unmute-user",
+          socketRatePolicies.moderation(socket.data.user.id, roomId),
+          "closed",
+          undefined,
+          "moderation-error",
+        ))
+      ) {
+        return;
+      }
       const moderatorId = socket.data.userId;
 
       const allowed = await canModerateRoom(roomId, moderatorId);
@@ -632,6 +770,18 @@ export const initializeSocket = (server: HttpServer) => {
       );
       if (!parsedPayload) return;
       const { roomId, muteAll } = parsedPayload;
+      if (
+        !(await enforceSocketRateLimit(
+          socket,
+          "moderator-set-mute-all",
+          socketRatePolicies.moderation(socket.data.user.id, roomId),
+          "closed",
+          undefined,
+          "moderation-error",
+        ))
+      ) {
+        return;
+      }
       try {
         const moderatorId = socket.data.userId;
 
@@ -678,6 +828,18 @@ export const initializeSocket = (server: HttpServer) => {
       );
       if (!parsedPayload) return;
       const { roomId, cameraEnabled } = parsedPayload;
+      if (
+        !(await enforceSocketRateLimit(
+          socket,
+          "moderator-set-camera",
+          socketRatePolicies.moderation(socket.data.user.id, roomId),
+          "closed",
+          undefined,
+          "moderation-error",
+        ))
+      ) {
+        return;
+      }
       try {
         const allowed = await canModerateRoom(roomId, socket.data.userId);
         if (!allowed) {
@@ -730,6 +892,18 @@ export const initializeSocket = (server: HttpServer) => {
       );
       if (!parsedPayload) return;
       const { roomId, targetUserId, cameraEnabled } = parsedPayload;
+      if (
+        !(await enforceSocketRateLimit(
+          socket,
+          "moderator-set-member-camera",
+          socketRatePolicies.moderation(socket.data.user.id, roomId),
+          "closed",
+          undefined,
+          "moderation-error",
+        ))
+      ) {
+        return;
+      }
       try {
         if (!(await canModerateRoom(roomId, socket.data.userId))) {
           socket.emit("moderation-error", {
@@ -796,42 +970,57 @@ export const initializeSocket = (server: HttpServer) => {
       if (!parsedPayload) return;
       const { roomId, cameraEnabled, activity } = parsedPayload;
       if (socket.data.roomId !== roomId) return;
-
-      const room = await findSingleItem(roomId);
-      if (!room) return;
-
-      const userId = socket.data.user.id;
-      const privileged =
-        room.hostId === userId || (await canModerateRoom(roomId, userId));
-      const memberCameraDisabled = await redis.sismember(
-        `room:${roomId}:camera-disabled`,
-        userId,
-      );
-      const roomCameraDisabled =
-        (await redis.get(`room:${roomId}:camera-enabled`)) === "0";
-      const memberCameraAllowed =
-        (await redis.sismember(`room:${roomId}:camera-allowed`, userId)) === 1;
-
       if (
-        cameraEnabled &&
-        (memberCameraDisabled === 1 ||
-          (roomCameraDisabled && !memberCameraAllowed && !privileged))
+        !(await enforceSocketRateLimit(
+          socket,
+          "camera-state",
+          socketRatePolicies.mediaState(socket.data.user.id, roomId),
+          "open",
+        ))
       ) {
-        socket.emit("camera-state", { roomId, userId, cameraEnabled: false });
         return;
       }
 
-      roomIo?.to(roomId).emit("camera-state", {
-        roomId,
-        userId,
-        cameraEnabled: Boolean(cameraEnabled),
-      });
-      if (activity) {
-        emitRoomActivity(roomId, {
-          type: cameraEnabled ? "camera-started" : "camera-stopped",
+      try {
+        const room = await findSingleItem(roomId);
+        if (!room) return;
+
+        const userId = socket.data.user.id;
+        const privileged =
+          room.hostId === userId || (await canModerateRoom(roomId, userId));
+        const memberCameraDisabled = await redis.sismember(
+          `room:${roomId}:camera-disabled`,
           userId,
-          userName: socket.data.userName ?? userId,
+        );
+        const roomCameraDisabled =
+          (await redis.get(`room:${roomId}:camera-enabled`)) === "0";
+        const memberCameraAllowed =
+          (await redis.sismember(`room:${roomId}:camera-allowed`, userId)) ===
+          1;
+
+        if (
+          cameraEnabled &&
+          (memberCameraDisabled === 1 ||
+            (roomCameraDisabled && !memberCameraAllowed && !privileged))
+        ) {
+          socket.emit("camera-state", { roomId, userId, cameraEnabled: false });
+          return;
+        }
+
+        roomIo?.to(roomId).emit("camera-state", {
+          roomId,
+          userId,
+          cameraEnabled: Boolean(cameraEnabled),
         });
+        if (activity) {
+          emitRoomActivity(roomId, {
+            type: cameraEnabled ? "camera-started" : "camera-stopped",
+            userId,
+            userName: socket.data.userName ?? userId,
+          });
+        }
+      } catch (error) {
+        console.error("[Socket] Failed to authorize camera state:", error);
       }
     });
 
@@ -844,6 +1033,18 @@ export const initializeSocket = (server: HttpServer) => {
       );
       if (!parsedPayload) return;
       const { roomId } = parsedPayload;
+      if (
+        !(await enforceSocketRateLimit(
+          socket,
+          "end-room",
+          socketRatePolicies.moderation(socket.data.user.id, roomId),
+          "closed",
+          undefined,
+          "moderation-error",
+        ))
+      ) {
+        return;
+      }
       try {
         const userId = socket.data.userId;
 

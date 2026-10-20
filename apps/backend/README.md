@@ -516,6 +516,57 @@ Production infrastructure:
 
 ---
 
+## Redis-Backed Rate Limits
+
+Rate limiting uses a Redis Lua script with atomic fixed-window counters shared by
+all backend instances. Keys are namespaced, contain SHA-256 digests rather than
+raw user/IP/account identifiers, and expire with their policy window. Policy
+windows are limited to 30 days and limits to 1,000,000. The fixed-window
+algorithm can allow a burst across adjacent window boundaries; monitor real
+traffic before tuning the defaults.
+
+Default HTTP policies:
+
+| Operation | Default |
+| --- | --- |
+| Sign-in | 40 per IP, 8 per IP/account, and 20 per account per 15 minutes |
+| Signup | 12 per IP per hour |
+| Refresh | 60 per IP per 5 minutes |
+| Room creation | 8 per user and 30 per IP per hour |
+| Room member mutations | 30 per user per minute |
+| HTTP chat | 20 per user per minute |
+
+Default Socket.IO policies:
+
+| Event group | Default |
+| --- | --- |
+| Chat | 8 per user/room per 10 seconds and 30 per authenticated user per 30 seconds |
+| Room join/rejoin | 60 per authenticated user/room and 120 per user per minute |
+| Speaking state | 20 per authenticated user/room per second |
+| Media state | 30 per authenticated user/room per 10 seconds |
+| Debate-side and moderation actions | 20 per authenticated user/room and 60 per user per minute |
+
+Socket chat, joins, debate-side changes and moderation fail closed when Redis is
+unavailable: the action is rejected with an error/callback and the socket is not
+disconnected. Speaking and media-state updates fail open with an explicit server
+log so a limiter outage does not interrupt ordinary room communication. HTTP
+limits fail closed with `503` and `Retry-After: 1`; an exceeded policy returns
+the standard error response with `429` and rate-limit headers. WebRTC signaling
+is not rate limited here.
+
+Configure any `RATE_LIMIT_*` value in `.env` to adjust a default. `*_MAX`
+variables are positive integer request/event limits; `*_WINDOW_MS` variables are
+positive integer durations. `TRUST_PROXY_HOPS` defaults to `0`; set it to the
+exact number of trusted reverse-proxy/load-balancer hops in production so
+`req.ip` cannot be spoofed through untrusted forwarding headers.
+
+Redis must be reachable and support Lua scripting. Policy keys share a Redis
+Cluster hash tag so the multi-key atomic script executes on one slot in both
+standalone and clustered Redis. This concentrates limiter traffic on that slot;
+monitor its throughput if scaling the service substantially.
+
+---
+
 ## License
 
 MIT

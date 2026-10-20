@@ -16,6 +16,7 @@ type ChatRoom = {
 type SendMessageResponse = {
   success: boolean;
   message?: string;
+  retryAfterMs?: number;
 };
 
 type ChatSocket = Pick<Socket, "data" | "rooms" | "emit">;
