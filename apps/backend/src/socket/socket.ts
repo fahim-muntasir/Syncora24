@@ -22,15 +22,31 @@ import { handleSendMessage } from "./handlers/chat/sendMessage";
 import { authenticateRoomSocket } from "./authenticateRoomSocket";
 import redis from "../redis";
 import {
-  changeMemberSideSchema,
-  type DebateSide,
-} from "../schemas/roomSchema";
+  answerSocketSchema,
+  cameraStateSocketSchema,
+  changeMemberSideSocketSchema,
+  endRoomSocketSchema,
+  iceCandidateSocketSchema,
+  joinRoomSocketSchema,
+  leaveRoomSocketSchema,
+  moderatorSetCameraSocketSchema,
+  moderatorSetMemberCameraSocketSchema,
+  moderatorSetMuteAllSocketSchema,
+  offerSocketSchema,
+  screenShareStateSocketSchema,
+  setModeratorRoleSocketSchema,
+  targetMemberSocketSchema,
+  userMuteStatusSocketSchema,
+  userSpeakingSocketSchema,
+} from "../schemas/socketSchema";
 import { withMemberTransition } from "./memberTransitionQueue";
+import { validateSocketPayload } from "./validatePayload";
 
 let io: Server | null = null;
 let publicIo: Namespace | null = null;
 let roomIo: Namespace | null = null;
 const DISCONNECT_GRACE_PERIOD_MS = 60_000;
+const MAX_SOCKET_PAYLOAD_BYTES = 1024 * 1024;
 const pendingDisconnects = new Map<string, ReturnType<typeof setTimeout>>();
 
 const getDisconnectKey = (roomId: string, userId: string) =>
@@ -45,8 +61,13 @@ const clearPendingDisconnect = (roomId: string, userId: string) => {
   }
 };
 
-const emitRoomActivity = (roomId: string, activity: Record<string, unknown>) => {
-  roomIo?.to(roomId).emit("room-activity", { ...activity, timestamp: Date.now() });
+const emitRoomActivity = (
+  roomId: string,
+  activity: Record<string, unknown>,
+) => {
+  roomIo
+    ?.to(roomId)
+    .emit("room-activity", { ...activity, timestamp: Date.now() });
 };
 
 const getMemberName = (
@@ -56,6 +77,7 @@ const getMemberName = (
 
 export const initializeSocket = (server: HttpServer) => {
   io = new Server(server, {
+    maxHttpBufferSize: MAX_SOCKET_PAYLOAD_BYTES,
     cors: {
       origin: "*",
     },
@@ -71,28 +93,32 @@ export const initializeSocket = (server: HttpServer) => {
     socket.on(
       "join-room",
       async (
-        {
-          roomId,
-          side,
-          reconnectOnly,
-        }: { roomId: string; side?: DebateSide; reconnectOnly?: boolean },
+        payload: unknown,
         callback?: (response: {
           success: boolean;
           message?: string;
           code?: string;
         }) => void,
       ) => {
+        const parsedPayload = validateSocketPayload(
+          socket,
+          "join-room",
+          joinRoomSocketSchema,
+          payload,
+          callback,
+        );
+        if (!parsedPayload) return;
+        const { roomId, side, reconnectOnly } = parsedPayload;
         const userId = socket.data.user.id;
         try {
           const response = await withMemberTransition(
             getDisconnectKey(roomId, userId),
             async () => {
-              const result = await handleJoinRoom(
-                roomIo!,
-                publicIo!,
-                socket,
-                { roomId, side, reconnectOnly },
-              );
+              const result = await handleJoinRoom(roomIo!, publicIo!, socket, {
+                roomId,
+                side,
+                reconnectOnly,
+              });
 
               if (result.success) {
                 clearPendingDisconnect(roomId, userId);
@@ -123,14 +149,20 @@ export const initializeSocket = (server: HttpServer) => {
         payload: unknown,
         callback?: (response: { success: boolean; message?: string }) => void,
       ) => {
-        const parsedPayload = changeMemberSideSchema.safeParse(payload);
-        if (!parsedPayload.success) {
-          callback?.({ success: false, message: "Choose For or Against." });
-          return;
-        }
-        const { roomId, side } = parsedPayload.data;
+        const parsedPayload = validateSocketPayload(
+          socket,
+          "change-debate-side",
+          changeMemberSideSocketSchema,
+          payload,
+          callback,
+        );
+        if (!parsedPayload) return;
+        const { roomId, side } = parsedPayload;
         if (socket.data.roomId !== roomId) {
-          callback?.({ success: false, message: "Join the room before changing your position." });
+          callback?.({
+            success: false,
+            message: "Join the room before changing your position.",
+          });
           return;
         }
 
@@ -164,29 +196,62 @@ export const initializeSocket = (server: HttpServer) => {
 
           callback?.({ success: true });
         } catch (error) {
-          const message = error instanceof Error
-            ? error.message
-            : "Unable to update your debate position.";
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Unable to update your debate position.";
           callback?.({ success: false, message });
         }
       },
     );
 
-    socket.on("offer", ({ to, offer }) => {
+    socket.on("offer", (payload: unknown) => {
+      const parsedPayload = validateSocketPayload(
+        socket,
+        "offer",
+        offerSocketSchema,
+        payload,
+      );
+      if (!parsedPayload) return;
+      const { to, offer } = parsedPayload;
       console.log("Forwarding offer to:", to);
       roomIo?.to(to).emit("offer", { from: socket.id, offer });
     });
 
-    socket.on("answer", ({ to, answer }) => {
+    socket.on("answer", (payload: unknown) => {
+      const parsedPayload = validateSocketPayload(
+        socket,
+        "answer",
+        answerSocketSchema,
+        payload,
+      );
+      if (!parsedPayload) return;
+      const { to, answer } = parsedPayload;
       roomIo?.to(to).emit("answer", { from: socket.id, answer });
     });
 
-    socket.on("ice-candidate", ({ to, candidate }) => {
+    socket.on("ice-candidate", (payload: unknown) => {
+      const parsedPayload = validateSocketPayload(
+        socket,
+        "ice-candidate",
+        iceCandidateSocketSchema,
+        payload,
+      );
+      if (!parsedPayload) return;
+      const { to, candidate } = parsedPayload;
       roomIo?.to(to).emit("ice-candidate", { from: socket.id, candidate });
     });
 
     // Handle user speaking status
-    socket.on("user-speaking", ({ roomId, speaking }) => {
+    socket.on("user-speaking", (payload: unknown) => {
+      const parsedPayload = validateSocketPayload(
+        socket,
+        "user-speaking",
+        userSpeakingSocketSchema,
+        payload,
+      );
+      if (!parsedPayload) return;
+      const { roomId, speaking } = parsedPayload;
       if (socket.data.roomId !== roomId) return;
       const userId = socket.data.user.id;
       console.log(`🎙 ${userId} ${speaking ? "started" : "stopped"} speaking`);
@@ -196,19 +261,19 @@ export const initializeSocket = (server: HttpServer) => {
     });
 
     socket.on("screen-share-state", (payload: unknown) => {
-      const { roomId, sharing, streamId, activity } = (payload ?? {}) as {
-        roomId?: unknown;
-        sharing?: unknown;
-        streamId?: unknown;
-        activity?: unknown;
-      };
-
-      if (typeof roomId !== "string" || socket.data.roomId !== roomId) return;
+      const parsedPayload = validateSocketPayload(
+        socket,
+        "screen-share-state",
+        screenShareStateSocketSchema,
+        payload,
+      );
+      if (!parsedPayload) return;
+      const { roomId, sharing, streamId, activity } = parsedPayload;
+      if (socket.data.roomId !== roomId) return;
 
       const userId = socket.data.user.id;
-      const isSharing = sharing === true;
-      const nextStreamId =
-        isSharing && typeof streamId === "string" ? streamId : undefined;
+      const isSharing = sharing;
+      const nextStreamId = isSharing ? streamId : undefined;
       const wasSharing = Boolean(socket.data.isScreenSharing);
       const didStateChange = wasSharing !== isSharing;
 
@@ -238,7 +303,15 @@ export const initializeSocket = (server: HttpServer) => {
     });
 
     // mute user
-    socket.on("user-mute-status", ({ roomId, isUnMuted }) => {
+    socket.on("user-mute-status", (payload: unknown) => {
+      const parsedPayload = validateSocketPayload(
+        socket,
+        "user-mute-status",
+        userMuteStatusSocketSchema,
+        payload,
+      );
+      if (!parsedPayload) return;
+      const { roomId, isUnMuted } = parsedPayload;
       if (socket.data.roomId !== roomId) return;
       const userId = socket.data.user.id;
       console.log(
@@ -257,9 +330,18 @@ export const initializeSocket = (server: HttpServer) => {
     socket.on(
       "leave-room",
       async (
-        { roomId }: { roomId: string },
+        payload: unknown,
         callback?: (response: { success: boolean; message?: string }) => void,
       ) => {
+        const parsedPayload = validateSocketPayload(
+          socket,
+          "leave-room",
+          leaveRoomSocketSchema,
+          payload,
+          callback,
+        );
+        if (!parsedPayload) return;
+        const { roomId } = parsedPayload;
         const memberId = socket.data.user.id;
         try {
           await withMemberTransition(
@@ -328,7 +410,15 @@ export const initializeSocket = (server: HttpServer) => {
       },
     );
 
-    socket.on("kick-member", async ({ roomId, targetUserId }) => {
+    socket.on("kick-member", async (payload: unknown) => {
+      const parsedPayload = validateSocketPayload(
+        socket,
+        "kick-member",
+        targetMemberSocketSchema,
+        payload,
+      );
+      if (!parsedPayload) return;
+      const { roomId, targetUserId } = parsedPayload;
       try {
         const room = await findSingleItem(roomId);
         if (!room) throw new Error("Room not found.");
@@ -388,42 +478,49 @@ export const initializeSocket = (server: HttpServer) => {
       }
     });
 
-    socket.on(
-      "set-moderator-role",
-      async ({ roomId, targetUserId, isModerator }) => {
-        try {
-          const result = await setModeratorRole({
-            roomId,
-            actorId: socket.data.userId,
-            targetId: targetUserId,
-            isModerator: Boolean(isModerator),
-          });
+    socket.on("set-moderator-role", async (payload: unknown) => {
+      const parsedPayload = validateSocketPayload(
+        socket,
+        "set-moderator-role",
+        setModeratorRoleSocketSchema,
+        payload,
+      );
+      if (!parsedPayload) return;
+      const { roomId, targetUserId, isModerator } = parsedPayload;
+      try {
+        const result = await setModeratorRole({
+          roomId,
+          actorId: socket.data.userId,
+          targetId: targetUserId,
+          isModerator,
+        });
 
-          roomIo?.to(roomId).emit("room-moderator-updated", {
-            roomId,
-            memberId: targetUserId,
-            isModerator: result.isModerator,
-          });
-          const room = await findSingleItem(roomId);
-          if (room) {
-            emitRoomActivity(roomId, {
-              type: result.isModerator ? "moderator-promoted" : "moderator-removed",
-              userId: targetUserId,
-              userName: getMemberName(room, targetUserId),
-              actorId: socket.data.userId,
-              actorName: socket.data.userName ?? socket.data.userId,
-            });
-          }
-        } catch (error) {
-          socket.emit("moderation-error", {
-            message:
-              error instanceof Error
-                ? error.message
-                : "Unable to update moderator role.",
+        roomIo?.to(roomId).emit("room-moderator-updated", {
+          roomId,
+          memberId: targetUserId,
+          isModerator: result.isModerator,
+        });
+        const room = await findSingleItem(roomId);
+        if (room) {
+          emitRoomActivity(roomId, {
+            type: result.isModerator
+              ? "moderator-promoted"
+              : "moderator-removed",
+            userId: targetUserId,
+            userName: getMemberName(room, targetUserId),
+            actorId: socket.data.userId,
+            actorName: socket.data.userName ?? socket.data.userId,
           });
         }
-      },
-    );
+      } catch (error) {
+        socket.emit("moderation-error", {
+          message:
+            error instanceof Error
+              ? error.message
+              : "Unable to update moderator role.",
+        });
+      }
+    });
 
     socket.on("sendMessage", (payload: unknown, callback) => {
       void handleSendMessage(
@@ -433,13 +530,22 @@ export const initializeSocket = (server: HttpServer) => {
         {
           findRoom: findSingleItem,
           isKicked: async (roomId, userId) =>
-            (await redis.sismember(`room:${roomId}:kicked-members`, userId)) === 1,
+            (await redis.sismember(`room:${roomId}:kicked-members`, userId)) ===
+            1,
         },
         callback,
       );
     });
 
-    socket.on("moderator-mute-user", async ({ roomId, targetUserId }) => {
+    socket.on("moderator-mute-user", async (payload: unknown) => {
+      const parsedPayload = validateSocketPayload(
+        socket,
+        "moderator-mute-user",
+        targetMemberSocketSchema,
+        payload,
+      );
+      if (!parsedPayload) return;
+      const { roomId, targetUserId } = parsedPayload;
       try {
         const moderatorId = socket.data.userId;
 
@@ -483,7 +589,15 @@ export const initializeSocket = (server: HttpServer) => {
       }
     });
 
-    socket.on("moderator-unmute-user", async ({ roomId, targetUserId }) => {
+    socket.on("moderator-unmute-user", async (payload: unknown) => {
+      const parsedPayload = validateSocketPayload(
+        socket,
+        "moderator-unmute-user",
+        targetMemberSocketSchema,
+        payload,
+      );
+      if (!parsedPayload) return;
+      const { roomId, targetUserId } = parsedPayload;
       const moderatorId = socket.data.userId;
 
       const allowed = await canModerateRoom(roomId, moderatorId);
@@ -509,7 +623,15 @@ export const initializeSocket = (server: HttpServer) => {
       }
     });
 
-    socket.on("moderator-set-mute-all", async ({ roomId, muteAll }) => {
+    socket.on("moderator-set-mute-all", async (payload: unknown) => {
+      const parsedPayload = validateSocketPayload(
+        socket,
+        "moderator-set-mute-all",
+        moderatorSetMuteAllSocketSchema,
+        payload,
+      );
+      if (!parsedPayload) return;
+      const { roomId, muteAll } = parsedPayload;
       try {
         const moderatorId = socket.data.userId;
 
@@ -547,7 +669,15 @@ export const initializeSocket = (server: HttpServer) => {
       }
     });
 
-    socket.on("moderator-set-camera", async ({ roomId, cameraEnabled }) => {
+    socket.on("moderator-set-camera", async (payload: unknown) => {
+      const parsedPayload = validateSocketPayload(
+        socket,
+        "moderator-set-camera",
+        moderatorSetCameraSocketSchema,
+        payload,
+      );
+      if (!parsedPayload) return;
+      const { roomId, cameraEnabled } = parsedPayload;
       try {
         const allowed = await canModerateRoom(roomId, socket.data.userId);
         if (!allowed) {
@@ -591,118 +721,129 @@ export const initializeSocket = (server: HttpServer) => {
       }
     });
 
-    socket.on(
-      "moderator-set-member-camera",
-      async ({ roomId, targetUserId, cameraEnabled }) => {
-        try {
-          if (!(await canModerateRoom(roomId, socket.data.userId))) {
-            socket.emit("moderation-error", {
-              message: "You don't have permission to change camera access.",
-            });
-            return;
-          }
-
-          const room = await findSingleItem(roomId);
-          if (
-            !room ||
-            !room.members.some(
-              (member: { id: string }) => member.id === targetUserId,
-            )
-          ) {
-            return;
-          }
-
-          const targetIsPrivileged =
-            room.hostId === targetUserId ||
-            (await canModerateRoom(roomId, targetUserId));
-          if (targetIsPrivileged) {
-            socket.emit("moderation-error", {
-              message: "Administrators and moderators always retain camera access.",
-            });
-            return;
-          }
-
-          const enabled = await setCameraMemberEnabled(
-            roomId,
-            targetUserId,
-            Boolean(cameraEnabled),
-          );
-          roomIo?.to(roomId).emit("room-member-camera-state", {
-            roomId,
-            memberId: targetUserId,
-            cameraEnabled: enabled,
-          });
-          emitRoomActivity(roomId, {
-            type: "camera-permission-changed",
-            userId: targetUserId,
-            userName: getMemberName(room, targetUserId),
-            actorId: socket.data.userId,
-            actorName: socket.data.userName ?? socket.data.userId,
-            enabled,
-            scope: "member",
-          });
-        } catch (error) {
-          console.error("Failed to change member camera access:", error);
+    socket.on("moderator-set-member-camera", async (payload: unknown) => {
+      const parsedPayload = validateSocketPayload(
+        socket,
+        "moderator-set-member-camera",
+        moderatorSetMemberCameraSocketSchema,
+        payload,
+      );
+      if (!parsedPayload) return;
+      const { roomId, targetUserId, cameraEnabled } = parsedPayload;
+      try {
+        if (!(await canModerateRoom(roomId, socket.data.userId))) {
           socket.emit("moderation-error", {
-            message: "Unable to change member camera access.",
+            message: "You don't have permission to change camera access.",
           });
-        }
-      },
-    );
-
-    socket.on(
-      "camera-state",
-      async ({
-        roomId,
-        cameraEnabled,
-        activity = true,
-      }: {
-        roomId: string;
-        cameraEnabled: boolean;
-        activity?: boolean;
-      }) => {
-        if (socket.data.roomId !== roomId) return;
-
-        const room = await findSingleItem(roomId);
-        if (!room) return;
-
-        const userId = socket.data.user.id;
-        const privileged =
-          room.hostId === userId || (await canModerateRoom(roomId, userId));
-        const memberCameraDisabled = await redis.sismember(
-          `room:${roomId}:camera-disabled`,
-          userId,
-        );
-        const roomCameraDisabled =
-          (await redis.get(`room:${roomId}:camera-enabled`)) === "0";
-        const memberCameraAllowed =
-          (await redis.sismember(`room:${roomId}:camera-allowed`, userId)) === 1;
-
-        if (
-          cameraEnabled &&
-          (memberCameraDisabled === 1 ||
-            (roomCameraDisabled && !memberCameraAllowed && !privileged))
-        ) {
-          socket.emit("camera-state", { roomId, userId, cameraEnabled: false });
           return;
         }
 
-        roomIo?.to(roomId).emit("camera-state", {
-          roomId,
-          userId,
-          cameraEnabled: Boolean(cameraEnabled),
-        });
-        if (activity) {
-          emitRoomActivity(roomId, {
-            type: cameraEnabled ? "camera-started" : "camera-stopped",
-            userId,
-            userName: socket.data.userName ?? userId,
-          });
+        const room = await findSingleItem(roomId);
+        if (
+          !room ||
+          !room.members.some(
+            (member: { id: string }) => member.id === targetUserId,
+          )
+        ) {
+          return;
         }
-      },
-    );
 
-    socket.on("end-room", async ({ roomId }) => {
+        const targetIsPrivileged =
+          room.hostId === targetUserId ||
+          (await canModerateRoom(roomId, targetUserId));
+        if (targetIsPrivileged) {
+          socket.emit("moderation-error", {
+            message:
+              "Administrators and moderators always retain camera access.",
+          });
+          return;
+        }
+
+        const enabled = await setCameraMemberEnabled(
+          roomId,
+          targetUserId,
+          Boolean(cameraEnabled),
+        );
+        roomIo?.to(roomId).emit("room-member-camera-state", {
+          roomId,
+          memberId: targetUserId,
+          cameraEnabled: enabled,
+        });
+        emitRoomActivity(roomId, {
+          type: "camera-permission-changed",
+          userId: targetUserId,
+          userName: getMemberName(room, targetUserId),
+          actorId: socket.data.userId,
+          actorName: socket.data.userName ?? socket.data.userId,
+          enabled,
+          scope: "member",
+        });
+      } catch (error) {
+        console.error("Failed to change member camera access:", error);
+        socket.emit("moderation-error", {
+          message: "Unable to change member camera access.",
+        });
+      }
+    });
+
+    socket.on("camera-state", async (payload: unknown) => {
+      const parsedPayload = validateSocketPayload(
+        socket,
+        "camera-state",
+        cameraStateSocketSchema,
+        payload,
+      );
+      if (!parsedPayload) return;
+      const { roomId, cameraEnabled, activity } = parsedPayload;
+      if (socket.data.roomId !== roomId) return;
+
+      const room = await findSingleItem(roomId);
+      if (!room) return;
+
+      const userId = socket.data.user.id;
+      const privileged =
+        room.hostId === userId || (await canModerateRoom(roomId, userId));
+      const memberCameraDisabled = await redis.sismember(
+        `room:${roomId}:camera-disabled`,
+        userId,
+      );
+      const roomCameraDisabled =
+        (await redis.get(`room:${roomId}:camera-enabled`)) === "0";
+      const memberCameraAllowed =
+        (await redis.sismember(`room:${roomId}:camera-allowed`, userId)) === 1;
+
+      if (
+        cameraEnabled &&
+        (memberCameraDisabled === 1 ||
+          (roomCameraDisabled && !memberCameraAllowed && !privileged))
+      ) {
+        socket.emit("camera-state", { roomId, userId, cameraEnabled: false });
+        return;
+      }
+
+      roomIo?.to(roomId).emit("camera-state", {
+        roomId,
+        userId,
+        cameraEnabled: Boolean(cameraEnabled),
+      });
+      if (activity) {
+        emitRoomActivity(roomId, {
+          type: cameraEnabled ? "camera-started" : "camera-stopped",
+          userId,
+          userName: socket.data.userName ?? userId,
+        });
+      }
+    });
+
+    socket.on("end-room", async (payload: unknown) => {
+      const parsedPayload = validateSocketPayload(
+        socket,
+        "end-room",
+        endRoomSocketSchema,
+        payload,
+      );
+      if (!parsedPayload) return;
+      const { roomId } = parsedPayload;
       try {
         const userId = socket.data.userId;
 
@@ -771,7 +912,11 @@ export const initializeSocket = (server: HttpServer) => {
           }
 
           const liveSockets = await roomIo!.in(roomId).fetchSockets();
-          if (liveSockets.some((liveSocket) => liveSocket.data.userId === memberId)) {
+          if (
+            liveSockets.some(
+              (liveSocket) => liveSocket.data.userId === memberId,
+            )
+          ) {
             clearPendingDisconnect(roomId, memberId);
             return;
           }
@@ -813,10 +958,17 @@ export const initializeSocket = (server: HttpServer) => {
 
                 await removeMember({ roomId, memberId });
                 clearPendingDisconnect(roomId, memberId);
-                publicIo?.emit("public-room-member-removed", { roomId, memberId });
-                roomIo?.to(roomId).emit("room-member-removed", { roomId, memberId });
+                publicIo?.emit("public-room-member-removed", {
+                  roomId,
+                  memberId,
+                });
+                roomIo
+                  ?.to(roomId)
+                  .emit("room-member-removed", { roomId, memberId });
 
-                roomIo?.to(roomId).emit("user-left", { roomId, memberId, socketId });
+                roomIo
+                  ?.to(roomId)
+                  .emit("user-left", { roomId, memberId, socketId });
                 emitRoomActivity(roomId, {
                   type: "member-left",
                   userId: memberId,

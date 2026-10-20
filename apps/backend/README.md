@@ -187,6 +187,12 @@ Authentication is used to determine whether a user can access protected resource
 
 Socket.IO provides the real-time communication layer.
 
+Client event payloads are validated against strict Zod schemas before room,
+Redis, moderation, or signaling operations. The server accepts Socket.IO
+payloads up to 1 MiB; WebRTC SDP is limited to 256 KiB per description and ICE
+candidate strings to 8 KiB. These limits allow normal offer/answer and
+candidate payloads while bounding individual event size.
+
 It is used for:
 
 - Room joining and leaving

@@ -10,13 +10,15 @@ export const signUpController = async (
   next: NextFunction
 ) => {
   try {
-    // validate the req body with zod
-    signUpSchema.parse(req.body);
+    const validatedData = signUpSchema.parse(req.body);
 
-    const password = await hashPassword(req.body.password);
+    const password = await hashPassword(validatedData.password);
 
-    // create the user
-    const createdUser = await signUp({ ...req.body, password });
+    const createdUser = await signUp({
+      fullName: validatedData.fullName,
+      email: validatedData.email,
+      password,
+    });
 
     const responseData = {
       id: createdUser.id,

@@ -1,5 +1,6 @@
 import type { Socket } from "socket.io";
-import { sendMessagePayloadSchema } from "../../../schemas/chatSchema";
+import { sendMessageSocketSchema } from "../../../schemas/socketSchema";
+import { validateSocketPayload } from "../../validatePayload";
 
 type RoomMember = {
   id: string;
@@ -17,7 +18,7 @@ type SendMessageResponse = {
   message?: string;
 };
 
-type ChatSocket = Pick<Socket, "data" | "rooms">;
+type ChatSocket = Pick<Socket, "data" | "rooms" | "emit">;
 
 type SendMessageDependencies = {
   findRoom: (roomId: string) => Promise<ChatRoom | null>;
@@ -31,13 +32,16 @@ export const handleSendMessage = async (
   dependencies: SendMessageDependencies,
   callback?: (response: SendMessageResponse) => void,
 ): Promise<void> => {
-  const parsed = sendMessagePayloadSchema.safeParse(payload);
-  if (!parsed.success) {
-    callback?.({ success: false, message: "Invalid chat message." });
-    return;
-  }
+  const parsed = validateSocketPayload(
+    socket,
+    "sendMessage",
+    sendMessageSocketSchema,
+    payload,
+    callback,
+  );
+  if (!parsed) return;
 
-  const { roomId, message } = parsed.data;
+  const { roomId, message } = parsed;
   const user = socket.data.user;
   const userId = user?.id;
   if (

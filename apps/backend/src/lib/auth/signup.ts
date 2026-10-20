@@ -1,7 +1,6 @@
 import { Auth } from "../../models";
 
 enum Role {
-  Admin = "admin",
   User = "user",
 }
 
@@ -9,25 +8,19 @@ type SignUp = {
   fullName: string;
   email: string;
   password: string;
-  role: Role;
 };
 
-export const signUp = async ({
+export const createSignupUserData = ({
   fullName,
   email,
   password,
-  role = Role.User,
-}: SignUp) => {
-  try {
-    const user = await Auth.create({
-      fullName,
-      email,
-      password,
-      role,
-    });
+}: SignUp) => ({
+  fullName,
+  email,
+  password,
+  role: Role.User,
+});
 
-    return user;
-  } catch (error) {
-    throw error;
-  }
+export const signUp = async (input: SignUp) => {
+  return Auth.create(createSignupUserData(input));
 };
