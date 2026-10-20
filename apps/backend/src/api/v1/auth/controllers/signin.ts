@@ -21,7 +21,7 @@ export const signInController = async (
 
     const authenticateUser = await existAuthenticateUser(validatedData.email);
 
-    if (!authenticateUser) {
+    if (!authenticateUser || !authenticateUser.password) {
       throw createHttpError(401, "Authentication failed");
     }
 

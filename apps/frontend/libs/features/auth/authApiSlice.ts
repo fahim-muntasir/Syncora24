@@ -3,6 +3,17 @@ import { isAuthResponse } from "@/utils/typeGuards";
 import { userLoggedIn } from "./authSlice";
 import type { AuthResponse } from "@/types/auth";
 
+const getAuthenticatedUser = (data: unknown) => {
+  if (!isAuthResponse(data)) {
+    console.error("Invalid authentication response structure:", data);
+    return null;
+  }
+
+  const auth = { token: data.data.token, user: data.data.user };
+  localStorage.setItem("auth", JSON.stringify(auth));
+  return auth;
+};
+
 export const authApiSlice = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
     signUp: builder.mutation<
@@ -25,28 +36,27 @@ export const authApiSlice = apiSlice.injectEndpoints({
       onQueryStarted: async (args, { dispatch, queryFulfilled }) => {
         try {
           const { data } = await queryFulfilled;
+          const auth = getAuthenticatedUser(data);
+          if (auth) dispatch(userLoggedIn(auth));
+        } catch {
+          // The calling form displays the RTK Query error.
+        }
+      },
+    }),
 
-          if (isAuthResponse(data)) {
-            localStorage.setItem(
-              "auth",
-              JSON.stringify({ token: data.data.token, user: data.data.user }),
-            );
-
-            dispatch(
-              userLoggedIn({
-                token: data.data.token,
-                user: data.data.user,
-              }),
-            );
-
-            setTimeout(() => {
-              window.location.href = "/";
-            }, 2000);
-          } else {
-            console.error("Invalid response structure:", data);
-          }
-        } catch (error) {
-          console.error("Sign-in failed:", error);
+    googleSignIn: builder.mutation<unknown, { idToken: string }>({
+      query: ({ idToken }) => ({
+        url: "/auth/google",
+        method: "POST",
+        body: { idToken },
+      }),
+      onQueryStarted: async (_args, { dispatch, queryFulfilled }) => {
+        try {
+          const { data } = await queryFulfilled;
+          const auth = getAuthenticatedUser(data);
+          if (auth) dispatch(userLoggedIn(auth));
+        } catch {
+          // The authentication modal displays the RTK Query error.
         }
       },
     }),
@@ -70,6 +80,7 @@ export const authApiSlice = apiSlice.injectEndpoints({
 export const {
   useSignUpMutation,
   useSignInMutation,
+  useGoogleSignInMutation,
   useLogoutMutation,
   useRefreshTokenMutation,
 } = authApiSlice;

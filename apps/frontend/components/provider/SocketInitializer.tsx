@@ -5,6 +5,7 @@ import { publicSocketManager, roomSocketManager } from "@/libs/socket/index";
 import { useAppDispatch, useAppSelector } from "@/libs/hooks";
 import { useRefreshTokenMutation } from "@/libs/features/auth/authApiSlice";
 import { userLoggedIn, userLoggedOut } from "@/libs/features/auth/authSlice";
+import { openAuthenticationModal } from "@/libs/features/modal/modalSlice";
 
 export default function SocketInitializer() {
   const token = useAppSelector((state) => state.auth.token);
@@ -48,7 +49,7 @@ export default function SocketInitializer() {
             console.warn("[SocketInitializer] Socket token refresh failed:", error);
             localStorage.removeItem("auth");
             dispatch(userLoggedOut());
-            window.location.href = "/auth/signin";
+            dispatch(openAuthenticationModal("choice"));
           });
       };
 

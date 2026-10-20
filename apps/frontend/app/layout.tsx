@@ -5,6 +5,7 @@ import { Toaster } from "react-hot-toast";
 import { AuthChecker } from "@/components/AuthChecker";
 import { AudioProvider } from "@/context/AudioContext";
 import SocketInitializer from "@/components/provider/SocketInitializer";
+import AuthenticationModalHost from "@/components/Auth/AuthenticationModal";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -40,6 +41,7 @@ export default function RootLayout({
               {children}
             </AudioProvider>
           </AuthChecker>
+          <AuthenticationModalHost />
         </StoreProvider>
         <Toaster position="top-right" reverseOrder={false} />
         <div id="modal-portal"></div>

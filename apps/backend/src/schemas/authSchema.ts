@@ -16,3 +16,7 @@ export const signInSchema = z.object({
     .nonempty("Email is required."),
   password: z.string().nonempty("Password is required."),
 });
+
+export const googleSignInSchema = z.object({
+  idToken: z.string().min(1).max(10_000),
+});

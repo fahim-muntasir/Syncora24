@@ -7,6 +7,7 @@ import {
   signInController,
   refreshTokenController,
   logoutController,
+  googleSignInController,
 } from "../api/v1/auth";
 
 // rooms controller import
@@ -44,6 +45,7 @@ router.get("/health", (_req: Request, res: Response) => {
 // aut route SignIn and SignUp
 router.route("/v1/auth/signup").post(signUpRateLimit, signUpController);
 router.route("/v1/auth/signin").post(signInRateLimit, signInController);
+router.route("/v1/auth/google").post(signInRateLimit, googleSignInController);
 router.route("/v1/auth/refresh").post(refreshRateLimit, refreshTokenController);
 router.route("/v1/auth/logout").post(logoutController);
 

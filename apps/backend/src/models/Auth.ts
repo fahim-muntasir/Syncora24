@@ -4,7 +4,7 @@ const authSchema = new Schema(
   {
     fullName: {
       type: String,
-      require: [true, "Name is required."],
+      required: [true, "Name is required."],
     },
     email: {
       type: String,
@@ -22,9 +22,15 @@ const authSchema = new Schema(
         message: "Email is already in use.",
       },
     },
+    googleId: {
+      type: String,
+      select: false,
+    },
     password: {
       type: String,
-      required: [true, "Password is required"],
+      required: function (this: { googleId?: string }) {
+        return !this.googleId;
+      },
       minlength: [6, "Password must be at least 6 characters long"],
     },
     role: {
@@ -38,5 +44,7 @@ const authSchema = new Schema(
   },
   { timestamps: true, id: true }
 );
+
+authSchema.index({ googleId: 1 }, { unique: true, sparse: true });
 
 export const Auth = model("User", authSchema);

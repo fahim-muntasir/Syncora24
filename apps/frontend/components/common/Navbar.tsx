@@ -6,9 +6,11 @@ import { LogIn, LogOut, Plus } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/libs/hooks";
 import { userLoggedOut } from "@/libs/features/auth/authSlice";
 import { useLogoutMutation } from "@/libs/features/auth/authApiSlice";
-import { openCreateRoomModal } from "@/libs/features/modal/modalSlice";
+import {
+  openAuthenticationModal,
+  openCreateRoomModal,
+} from "@/libs/features/modal/modalSlice";
 import CreateRoomModal from "../CreateRoomModal";
-import Logo from "@/public/logo.svg";
 
 const focusRing =
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-500/60";
@@ -31,8 +33,7 @@ export function Navbar() {
     } finally {
       localStorage.removeItem("auth");
       dispatch(userLoggedOut());
-
-      window.location.href = "/auth/signin";
+      dispatch(openAuthenticationModal("choice"));
     }
   };
 
@@ -47,7 +48,7 @@ export function Navbar() {
             href="/"
             className={`group flex items-center gap-3 rounded-lg ${focusRing}`}
           >
-            <Image src={Logo} alt="Syncora24" width={110} height={30} priority />
+            <Image src="/logo.svg" alt="Syncora24" width={110} height={30} priority />
           </Link>
 
           <div className="flex items-center gap-2">
@@ -94,13 +95,14 @@ export function Navbar() {
                 </button>
               </>
             ) : (
-              <Link
-                href="/auth/signin"
+              <button
+                type="button"
+                onClick={() => dispatch(openAuthenticationModal("choice"))}
                 className={`flex h-9 items-center gap-2 rounded-lg border border-white/[0.1] px-3.5 text-sm font-medium text-white transition-colors duration-200 hover:border-white/[0.2] hover:bg-white/[0.04] active:scale-[0.98] motion-reduce:transition-none ${focusRing}`}
               >
                 <LogIn className="h-4 w-4 text-gray-400" />
                 Sign in
-              </Link>
+              </button>
             )}
           </div>
         </nav>

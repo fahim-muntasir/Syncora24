@@ -21,6 +21,7 @@ import { useAppSelector, useAppDispatch } from "@/libs/hooks";
 import { publicSocketManager } from "@/libs/socket/index";
 import { generateIdenticonAvatar } from "@/utils/generateAvatar";
 import { RoomType } from "@/types/room";
+import { openAuthenticationModal } from "@/libs/features/modal/modalSlice";
 import { BackgroundPattern } from "@/components/background/BackgroundPattern";
 import LevelMeter from "@/components/common/Room/LevelMeter";
 
@@ -182,7 +183,7 @@ export default function RoomDetailsModal({
     }
 
     if (!currentUser?.id) {
-      toast.error("User not authenticated.");
+      dispatch(openAuthenticationModal("choice"));
       return;
     }
 
