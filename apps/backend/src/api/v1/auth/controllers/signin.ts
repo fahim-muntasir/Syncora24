@@ -4,7 +4,11 @@ import { signInSchema } from "../../../../schemas/authSchema";
 import { successResponse } from "../../../../utils/responseHelper";
 import { comparePassword } from "../../../../utils/authUtils";
 import { existAuthenticateUser } from "../../../../lib/auth";
-import { tokenGenerator, refreshTokenGenerator } from "../../../../lib/auth";
+import {
+  issueRefreshSession,
+  tokenGenerator,
+} from "../../../../lib/auth";
+import { setRefreshCookie } from "../refreshCookie";
 
 export const signInController = async (
   req: Request,
@@ -36,20 +40,10 @@ export const signInController = async (
       createdAt: authenticateUser.createdAt,
     };
 
-    const refreshTokenPayload = {
-      id: authenticateUser.id,
-    };
-
     // generate a token
     const token = await tokenGenerator(payload);
-    const refreshToken = await refreshTokenGenerator(refreshTokenPayload);
-
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
+    const refreshToken = await issueRefreshSession(authenticateUser.id);
+    setRefreshCookie(res, refreshToken);
 
     const links = {
       self: `/users/${authenticateUser.id}`

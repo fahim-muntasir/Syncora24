@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { successResponse } from "../../../../utils/responseHelper";
+import { revokeRefreshSession } from "../../../../lib/auth";
+import { clearRefreshCookie } from "../refreshCookie";
 
 export const logoutController = async (
   req: Request,
@@ -7,11 +9,8 @@ export const logoutController = async (
   next: NextFunction,
 ) => {
   try {
-    res.clearCookie("refreshToken", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-    });
+    await revokeRefreshSession(req.cookies.refreshToken);
+    clearRefreshCookie(res);
 
     successResponse(
       res,

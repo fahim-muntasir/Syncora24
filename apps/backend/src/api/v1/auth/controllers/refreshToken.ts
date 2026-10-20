@@ -3,10 +3,12 @@ import createHttpError from "http-errors";
 import { successResponse } from "../../../../utils/responseHelper";
 import {
   refreshTokenValidator,
+  rotateRefreshSession,
+  revokeRefreshSession,
   tokenGenerator,
-  refreshTokenGenerator,
 } from "../../../../lib/auth";
 import { existAuthenticateUserById } from "../../../../lib/auth";
+import { clearRefreshCookie, setRefreshCookie } from "../refreshCookie";
 
 export const refreshTokenController = async (
   req: Request,
@@ -23,13 +25,6 @@ export const refreshTokenController = async (
 
     // Verify refresh token
     const decoded = await refreshTokenValidator(refreshToken);
-
-    const currentTime = Math.floor(Date.now() / 1000);
-
-    const remainingTime = decoded.exp - currentTime;
-
-    const shouldRotateRefreshToken = remainingTime <= 24 * 60 * 60;
-
     if (!decoded || !decoded.id) {
       throw createHttpError(401, "Invalid refresh token");
     }
@@ -38,6 +33,7 @@ export const refreshTokenController = async (
     const authenticateUser = await existAuthenticateUserById(decoded.id);
 
     if (!authenticateUser) {
+      await revokeRefreshSession(refreshToken);
       throw createHttpError(401, "User no longer exists");
     }
 
@@ -51,23 +47,10 @@ export const refreshTokenController = async (
       createdAt: authenticateUser.createdAt,
     };
 
-    const refreshTokenPayload = {
-      id: authenticateUser.id,
-    };
-
-    // Generate a new access token
+    // Create the access token before rotating so configuration errors don't consume the session.
     const token = await tokenGenerator(payload);
-
-    if (shouldRotateRefreshToken) {
-      const newRefreshToken = await refreshTokenGenerator(refreshTokenPayload);
-
-      res.cookie("refreshToken", newRefreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
-    }
+    const rotation = await rotateRefreshSession(refreshToken);
+    setRefreshCookie(res, rotation.refreshToken);
 
     const links = {
       self: `/users/${authenticateUser.id}`,
@@ -86,6 +69,14 @@ export const refreshTokenController = async (
       links,
     );
   } catch (error) {
+    if (
+      error !== null &&
+      typeof error === "object" &&
+      "status" in error &&
+      error.status === 401
+    ) {
+      clearRefreshCookie(res);
+    }
     next(error);
   }
 };
