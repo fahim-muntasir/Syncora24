@@ -54,7 +54,7 @@ export default function Modal({
 
   return createPortal(
     <div
-      className={`fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-[#0b0b0b]/85 p-4 transition-opacity duration-200 ease-out motion-reduce:transition-none backdrop-blur-md ${
+      className={`fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-[#0b0b0b]/85 p-4 transition-opacity duration-200 ease-out motion-reduce:transition-none backdrop-blur-sm ${
         visible ? "opacity-100" : "opacity-0"
       }`}
     >

@@ -32,7 +32,7 @@ export default function VideoConference() {
 
   const { id } = useParams();
   const roomId = Array.isArray(id) ? id[0] : (id ?? "");
-  const { data, isSuccess } = useGetSingleRoomQuery(roomId, {
+  const { data, isSuccess, refetch } = useGetSingleRoomQuery(roomId, {
     refetchOnMountOrArgChange: true,
   });
   const currentUser = useAppSelector((state) => state.auth.user);
@@ -158,6 +158,10 @@ export default function VideoConference() {
   useEffect(() => {
     if (data && isSuccess && isRoomResponse(data)) setRoom(data.data);
   }, [data, isSuccess]);
+
+  useEffect(() => {
+    if (currentUser?.id) void refetch();
+  }, [currentUser?.id, refetch]);
 
   useEffect(() => {
     const unsubscribe = roomSocketManager.on(

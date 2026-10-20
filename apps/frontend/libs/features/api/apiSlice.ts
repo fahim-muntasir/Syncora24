@@ -8,6 +8,7 @@ import {
 import { Mutex } from "async-mutex";
 import { UserType } from "../../../types/auth";
 import { userLoggedOut, userLoggedIn } from "../auth/authSlice";
+import { openAuthenticationModal } from "../modal/modalSlice";
 
 const mutex = new Mutex();
 
@@ -51,6 +52,11 @@ const baseQueryWithReauth: BaseQueryFn<
 
   const isRefreshRequest =
     typeof args === "object" && args.url === "/auth/refresh";
+  const isAuthenticationRequest =
+    typeof args === "object" &&
+    ["/auth/signup", "/auth/signin", "/auth/google", "/auth/refresh"].includes(
+      args.url,
+    );
 
   if (isRefreshRequest) {
     const release = await mutex.acquire();
@@ -63,7 +69,7 @@ const baseQueryWithReauth: BaseQueryFn<
 
   let result = await baseQuery(args, api, extraOptions);
 
-  if (result.error?.status === 401 && !isRefreshRequest) {
+  if (result.error?.status === 401 && !isAuthenticationRequest) {
     if (!mutex.isLocked()) {
       const release = await mutex.acquire();
 
@@ -118,11 +124,7 @@ const baseQueryWithReauth: BaseQueryFn<
           localStorage.removeItem("auth");
 
           api.dispatch(userLoggedOut());
-
-          if (typeof window !== "undefined") {
-            window.location.href =
-              "/auth/signin";
-          }
+          api.dispatch(openAuthenticationModal("choice"));
         }
       } finally {
         release();
