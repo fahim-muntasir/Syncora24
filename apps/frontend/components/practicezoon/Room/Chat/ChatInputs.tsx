@@ -2,8 +2,8 @@
 import React, { useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import { Paperclip, Send } from "lucide-react";
+import toast from "react-hot-toast";
 import { roomSocketManager } from "@/libs/socket/index";
-import { useAppSelector } from "@/libs/hooks";
 
 type SentPayload = {
   text?: string;
@@ -22,33 +22,54 @@ const isEmojiOnly = (str: string) =>
 
 export default function ChatInputs({ onSend, replyTo }: ChatInputsProps) {
   const [msg, setMsg] = useState("");
+  const [isSending, setIsSending] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { id } = useParams();
   const roomId = Array.isArray(id) ? id[0] : (id ?? "");
-  const currentUser = useAppSelector((state) => state.auth.user);
+
+  const sendPayload = async (
+    payload: SentPayload,
+    reply?: { id: number | string; name: string; text?: string } | null,
+  ) => {
+    if (!roomId || isSending) return;
+
+    setIsSending(true);
+    try {
+      await roomSocketManager.emitWithAck("sendMessage", {
+        roomId,
+        message: {
+          ...payload,
+          ...(reply !== undefined
+            ? {
+              replyTo: reply
+                ? { id: reply.id, name: reply.name, text: reply.text }
+                : null,
+            }
+            : {}),
+        },
+      });
+      onSend(payload);
+      if (payload.text) setMsg("");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Unable to send the message.",
+      );
+    } finally {
+      setIsSending(false);
+    }
+  };
 
   const submitHandler = () => {
     const trimmed = msg.trim();
-    if (!trimmed || !roomId) return;
+    if (!trimmed) return;
 
-    const payload: SentPayload = {
-      text: trimmed,
-      emojiOnly: isEmojiOnly(trimmed),
-    };
-
-    roomSocketManager.emit("sendMessage", {
-      roomId,
-      message: {
-        ...payload,
-        senderName: currentUser?.fullName ?? "Anonymous",
-        replyTo: replyTo
-          ? { id: replyTo.id, name: replyTo.name, text: replyTo.text }
-          : null,
+    void sendPayload(
+      {
+        text: trimmed,
+        emojiOnly: isEmojiOnly(trimmed),
       },
-    });
-
-    onSend(payload);
-    setMsg("");
+      replyTo,
+    );
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -65,15 +86,7 @@ export default function ChatInputs({ onSend, replyTo }: ChatInputsProps) {
     const localUrl = URL.createObjectURL(file);
     const payload: SentPayload = { imageUrl: localUrl };
 
-    roomSocketManager.emit("sendMessage", {
-      roomId,
-      message: {
-        ...payload,
-        senderName: currentUser?.fullName ?? "Anonymous",
-      },
-    });
-
-    onSend(payload);
+    void sendPayload(payload);
     e.target.value = "";
   };
 
@@ -85,6 +98,7 @@ export default function ChatInputs({ onSend, replyTo }: ChatInputsProps) {
           type="file"
           accept="image/*"
           className="hidden"
+          disabled={isSending}
           onChange={handleFileChange}
         />
 
@@ -101,6 +115,8 @@ export default function ChatInputs({ onSend, replyTo }: ChatInputsProps) {
         <input
           type="text"
           value={msg}
+          maxLength={2000}
+          disabled={isSending}
           onChange={(e) => setMsg(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={replyTo ? `Replying to ${replyTo.name}…` : "Send a message…"}
@@ -111,7 +127,7 @@ export default function ChatInputs({ onSend, replyTo }: ChatInputsProps) {
         <button
           type="button"
           onClick={submitHandler}
-          disabled={!msg.trim()}
+          disabled={!msg.trim() || isSending}
           aria-label="Send message"
           title="Send"
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-green-500 text-white transition-colors enabled:hover:bg-green-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-500/60 disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none"

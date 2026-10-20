@@ -18,6 +18,7 @@ import {
 } from "../lib/moderation";
 
 import { handleJoinRoom } from "./handlers/room/joinRoom";
+import { handleSendMessage } from "./handlers/chat/sendMessage";
 import { authenticateRoomSocket } from "./authenticateRoomSocket";
 import redis from "../redis";
 import {
@@ -424,15 +425,18 @@ export const initializeSocket = (server: HttpServer) => {
       },
     );
 
-    socket.on("sendMessage", ({ roomId, message }) => {
-      const senderId = socket.data.userId;
-
-      roomIo?.to(roomId).emit("messageReceived", {
-        roomId,
-        message,
-        senderId,
-        timestamp: Date.now(),
-      });
+    socket.on("sendMessage", (payload: unknown, callback) => {
+      void handleSendMessage(
+        socket,
+        payload,
+        (roomId, event, data) => roomIo?.to(roomId).emit(event, data),
+        {
+          findRoom: findSingleItem,
+          isKicked: async (roomId, userId) =>
+            (await redis.sismember(`room:${roomId}:kicked-members`, userId)) === 1,
+        },
+        callback,
+      );
     });
 
     socket.on("moderator-mute-user", async ({ roomId, targetUserId }) => {
