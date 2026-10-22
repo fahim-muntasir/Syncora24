@@ -1,6 +1,7 @@
 "use client";
 import React from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import { LogIn, LogOut, Plus } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/libs/hooks";
@@ -10,7 +11,10 @@ import {
   openAuthenticationModal,
   openCreateRoomModal,
 } from "@/libs/features/modal/modalSlice";
-import CreateRoomModal from "../CreateRoomModal";
+
+const CreateRoomModal = dynamic(() => import("../CreateRoomModal"), {
+  ssr: false,
+});
 
 const focusRing =
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-500/60";
@@ -48,7 +52,12 @@ export function Navbar() {
             href="/"
             className={`group flex items-center gap-3 rounded-lg ${focusRing}`}
           >
-            <Image src="/logo.svg" alt="Syncora24" width={110} height={30} priority />
+            <Image src="/logo.png"
+              alt="Syncora24"
+              width={125}
+              height={34}
+              priority
+              className="h-auto w-[110px] transition-opacity duration-200 group-hover:opacity-85 sm:w-[135px]" />
           </Link>
 
           <div className="flex items-center gap-2">
@@ -108,7 +117,7 @@ export function Navbar() {
         </nav>
       </header>
 
-      <CreateRoomModal isOpen={roomIsOpen} />
+      {roomIsOpen && <CreateRoomModal isOpen />}
     </>
   );
 }
