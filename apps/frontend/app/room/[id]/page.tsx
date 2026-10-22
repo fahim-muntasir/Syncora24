@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
+import { AudioProvider } from "@/context/AudioContext";
 import { useGetSingleRoomQuery } from "@/libs/features/room/roomApiSlice";
 import { RoomType } from "@/types/room";
 import RoomLayout from "@/components/practicezoon/Room/RoomLayout";
@@ -19,7 +20,7 @@ import RoomEndedModal from "@/components/practicezoon/Room/Modals/RoomEndedModal
 import { useRoomSocket } from "@/hooks/useRoomSocket";
 import RoomKickedModal from "@/components/practicezoon/Room/Modals/RoomKickedModal";
 
-export default function VideoConference() {
+function VideoConferenceContent() {
   const [room, setRoom] = useState<RoomType | null>(null);
   const [layout] = useState<"grid" | "spotlight">("grid");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -343,5 +344,13 @@ export default function VideoConference() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function VideoConference() {
+  return (
+    <AudioProvider>
+      <VideoConferenceContent />
+    </AudioProvider>
   );
 }
